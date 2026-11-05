@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>iOS 18 SpringBoard — 智能起始页与多页导航中心</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="lib/ui/controls.css" />
+</head>
+<body data-icon-mode="light" data-icon-size="small" data-wallpaper="ios18-bloom">
+  <!-- Dynamic iOS 18 Mesh Wallpaper Layer -->
+  <div class="wallpaper-stage" id="wallpaperStage" aria-hidden="true">
+    <div class="wallpaper-dimmer" id="wallpaperDimmer"></div>
+    <div class="mesh-orb orb-1"></div>
+    <div class="mesh-orb orb-2"></div>
+    <div class="mesh-orb orb-3"></div>
+    <div class="mesh-orb orb-4"></div>
+    <div class="ios18-arch arch-top"></div>
+    <div class="ios18-arch arch-bottom"></div>
+    <div class="wallpaper-noise"></div>
+  </div>
+
+  <!-- Main iOS 18 SpringBoard Shell -->
+  <div class="springboard-shell" id="springboardShell">
+    
+    <!-- Top iOS 18 Status & Action Bar -->
+    <header class="ios-status-bar">
+      <div class="status-left">
+        <span class="status-time" id="statusBarTime">09:41</span>
+        <span class="status-date" id="statusBarDate">11月4日 周三</span>
+        <button class="focus-pill" id="focusModeToggle" type="button" title="切换专注模式">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+            <path d="M12.1 2.2c-.6 0-1.1.5-.9 1.1 1.2 4.3-1.4 8.8-5.7 10-1.2.3-2.5.4-3.7.1-.6-.1-1.1.4-.9 1 1.5 4.6 6.4 7.3 11.1 6 4.7-1.3 7.5-6.1 6.2-10.8-1-3.5-3.8-6.2-7.3-7.1-.3-.2-.6-.3-.8-.3z"/>
+          </svg>
+          <span id="focusLabel">个人专注</span>
+        </button>
+      </div>
+
+      <div class="status-center">
+        <div class="dynamic-island" id="dynamicIsland" role="region" aria-label="快捷入口">
+          <div class="island-compact">
+            <span class="island-pulse" id="islandPulse"></span>
+            <span class="island-text" id="islandText">智能起始页 · 桌面与小组件</span>
+            <button type="button" class="island-kbd" id="openSettingsFromIslandBtn" title="打开小组件、位置与时间设置">设置</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-right">
+        <div class="mobile-display-mode-bar" id="mobileDisplayModeBar" role="radiogroup" aria-label="移动端显示模式">
+          <button
+            type="button"
+            class="mobile-mode-pill active"
+            id="mobileModeCompactBtn"
+            data-mobile-mode="compact"
+            role="radio"
+            aria-checked="true"
+            title="紧凑模式：单屏总览全部小组件摘要与网站"
+          >
+            紧凑
+          </button>
+          <button
+            type="button"
+            class="mobile-mode-pill"
+            id="mobileModeComfortBtn"
+            data-mobile-mode="comfort"
+            role="radio"
+            aria-checked="false"
+            title="舒展模式：大尺寸图标与分屏滑动浏览"
+          >
+            舒展
+          </button>
+        </div>
+        <button class="top-glass-btn edit-only-add-btn" id="openAddModalBtn" type="button" title="添加网站或小组件到当前页" hidden>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span class="btn-label-text">添加</span>
+        </button>
+        <button class="top-glass-btn" id="openSettingsModalBtn" type="button" title="管理位置、天气、时间与数据同步">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span class="btn-label-text">位置与时间</span>
+        </button>
+        <button class="top-glass-btn" id="openCustomizeBtn" type="button" title="iOS 18 自定义图标与色调">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+            <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+            <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+            <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+            <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.97-4.03-9-9-9z"/>
+          </svg>
+          <span class="btn-label-text">外观</span>
+        </button>
+        <button class="top-glass-btn" id="toggleEditModeBtn" type="button" title="长按图标或点击进入编辑模式">
+          <span id="editModeBtnText">编辑</span>
+        </button>
+        <div class="status-system-icons" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+            <path d="M12 20a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm-4.24-4.24a6 6 0 0 1 8.48 0l1.42-1.42a8 8 0 0 0-11.32 0l1.42 1.42zm-2.83-2.83a10 10 0 0 1 14.14 0l1.42-1.42a12 12 0 0 0-16.98 0l1.42 1.42z"/>
+          </svg>
+          <div class="battery-pill">
+            <div class="battery-level"></div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Spotlight Search with Apple Intelligence Siri Glow -->
+    <section class="spotlight-section">
+      <div class="spotlight-wrapper" id="spotlightWrapper">
+        <div class="siri-glow-ring" aria-hidden="true"></div>
+        <div class="spotlight-bar">
+          <button class="engine-selector-btn" id="engineSelectorBtn" type="button" title="点击或按 Tab 切换搜索引擎">
+            <span class="engine-badge" id="currentEngineBadge">G</span>
+            <span class="engine-name" id="currentEngineName">Google</span>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+
+          <input
+            type="text"
+            id="spotlightInput"
+            class="spotlight-input"
+            placeholder="Spotlight 搜索全网或筛选应用… (⌘K)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+
+          <button class="spotlight-clear-btn" id="spotlightClearBtn" type="button" hidden aria-label="清除搜索">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm4.3 12.9a1 1 0 0 1-1.4 1.4L12 13.4l-2.9 2.9a1 1 0 0 1-1.4-1.4l2.9-2.9-2.9-2.9a1 1 0 0 1 1.4-1.4l2.9 2.9 2.9-2.9a1 1 0 0 1 1.4 1.4L13.4 12l2.9 2.9z"/>
+            </svg>
+          </button>
+
+          <button class="spotlight-submit-btn" id="spotlightSubmitBtn" type="button" title="搜索或前往" aria-label="执行搜索">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"/>
+              <path d="M20 20l-3.5-3.5"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Search Engine Popover -->
+        <div class="engine-popover" id="enginePopover" hidden></div>
+      </div>
+
+      <!-- Navigation Pages Bar + Reserved "+ 添加导航页" Button -->
+      <div class="page-tabs-bar-wrap">
+        <nav class="category-tabs" id="categoryTabs" aria-label="导航分页标签">
+          <!-- Populated dynamically from state.pages -->
+        </nav>
+
+        <!-- Reserved Add Navigation Page Button (预留添加导航页按钮) -->
+        <button class="add-page-pill-btn" id="openAddPageModalBtn" type="button" title="新建自定义导航页">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span>添加导航页</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Main SpringBoard Horizontal Swipe Viewport -->
+    <main class="springboard-stage" id="springboardStage">
+      
+      <!-- Global Search Results Overlay (Active when typing in Spotlight) -->
+      <section class="search-results-stage" id="searchResultsStage" hidden aria-label="Spotlight 搜索结果">
+        <div class="apps-grid" id="searchResultsGrid"></div>
+        <div class="empty-search-state" id="emptySearchState" hidden>
+          <div class="empty-icon">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="11" cy="11" r="7"/>
+              <path d="M20 20l-3.5-3.5"/>
+            </svg>
+          </div>
+          <p class="empty-title">未在桌面找到匹配的站点</p>
+          <p class="empty-sub">按 <kbd>Enter</kbd> 直接使用 <span id="emptyEngineName">Google</span> 搜索该关键词</p>
+        </div>
+      </section>
+
+      <!-- Horizontal Multi-Page Carousel Viewport (支持统一指针拖动与弹簧翻页动画) -->
+      <div class="springboard-viewport" id="springboardViewport">
+        <!-- Left / Right Desktop Hover Page Turn Arrows -->
+        <button class="page-nav-arrow prev-arrow" id="prevPageArrow" type="button" aria-label="上一页" title="上一页 (←)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <button class="page-nav-arrow next-arrow" id="nextPageArrow" type="button" aria-label="下一页" title="下一页 (→)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </button>
+
+        <!-- Sliding Track holding all SpringBoard Pages -->
+        <div class="springboard-track" id="springboardTrack">
+          <!-- Pages dynamically rendered by app.js -->
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Bottom Page Indicator Dots + Reserved Quick "+ 新页面" Trigger -->
+    <div class="springboard-pagination-wrap">
+      <div class="springboard-pagination" id="paginationDots" aria-label="桌面分页指示器">
+        <!-- Dots synced with state.pages -->
+      </div>
+      <button class="pagination-add-page-btn" id="bottomAddPageBtn" type="button" title="添加新导航页">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        <span>新页面</span>
+      </button>
+    </div>
+
+    <!-- iOS 18 Floating Frosted Glass Dock -->
+    <footer class="ios-dock-container">
+      <div class="ios-dock" id="iosDock" role="toolbar" aria-label="底部程序坞">
+        <!-- Populated dynamically by app.js -->
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- iOS 18 Home Screen Customization Sheet (Light / Dark / Tinted + Hue/Luminance + Size) -->
+  <aside class="customize-sheet" id="customizeSheet" aria-hidden="true">
+    <div class="sheet-grabber"></div>
+    <div class="customize-header">
+      <div class="customize-title-group">
+        <h3>iOS 18 主屏幕自定义</h3>
+        <span class="customize-subtitle">实时调整图标材质、专属色调与壁纸氛围</span>
+      </div>
+      <div class="customize-actions">
+        <button class="sheet-text-btn" id="openApiConfigBtn" type="button" title="打开位置、时间与数据同步设置">位置与时间设置</button>
+        <button class="sheet-text-btn" id="resetDefaultBtn" type="button" title="恢复初始默认图标与排序">恢复默认</button>
+        <button class="sheet-close-btn" id="closeCustomizeBtn" type="button" aria-label="关闭自定义面板">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="customize-body">
+      <div class="customize-controls-grid">
+        <div class="mode-segmented-control" role="radiogroup" aria-label="图标外观模式">
+          <button class="mode-option active" type="button" data-mode="light">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/>
+            </svg>
+            <span>浅色</span>
+          </button>
+          <button class="mode-option" type="button" data-mode="dark">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <span>深色</span>
+          </button>
+          <button class="mode-option" type="button" data-mode="tinted">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+            </svg>
+            <span>色调</span>
+          </button>
+        </div>
+
+        <div class="size-utilities-row">
+          <div class="size-toggle-pill" role="group" aria-label="图标大小">
+            <button class="size-btn active" type="button" data-size="small">小号</button>
+            <button class="size-btn" type="button" data-size="large">大号 (无字)</button>
+          </div>
+          <button class="dim-wallpaper-btn" id="dimWallpaperBtn" type="button" title="压暗壁纸以突出图标">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+              <circle cx="12" cy="12" r="5"/>
+            </svg>
+            <span>压暗</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="mobile-display-sheet-section" id="mobileDisplaySheetSection">
+        <div class="mobile-display-sheet-header">
+          <span class="picker-label">移动端显示方式（仅当前手机保存）</span>
+          <span class="mobile-display-mode-status" id="mobileDisplayModeStatusText">当前：紧凑单屏</span>
+        </div>
+        <div class="mode-segmented-control mobile-sheet-mode-group" role="radiogroup" aria-label="移动端显示方式选择">
+          <button class="mode-option active" type="button" data-mobile-mode="compact" role="radio" aria-checked="true">
+            <span>紧凑单屏（一屏总览）</span>
+          </button>
+          <button class="mode-option" type="button" data-mobile-mode="comfort" role="radio" aria-checked="false">
+            <span>舒展分屏（大图标滑动）</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="tint-sliders-panel" id="tintSlidersPanel">
+        <div class="slider-row">
+          <label for="tintHueRange">色相 (Hue)</label>
+          <input type="range" id="tintHueRange" min="0" max="360" value="215" class="ios-slider hue-slider" />
+        </div>
+        <div class="slider-row">
+          <label for="tintSatRange">浓度 (Intensity)</label>
+          <input type="range" id="tintSatRange" min="25" max="100" value="82" class="ios-slider sat-slider" />
+        </div>
+      </div>
+
+      <div class="wallpaper-picker-row">
+        <span class="picker-label">动态流体壁纸</span>
+        <div class="wallpaper-swatches" id="wallpaperSwatches">
+          <button class="swatch-btn active" type="button" data-wp="ios18-bloom" title="iOS 18 经典流光蓝粉">
+            <span class="swatch-preview wp-bloom"></span>
+            <span class="swatch-name">iOS 18 流光</span>
+          </button>
+          <button class="swatch-btn" type="button" data-wp="ios18-pink" title="iOS 18 霓虹洋红">
+            <span class="swatch-preview wp-pink"></span>
+            <span class="swatch-name">霞光粉紫</span>
+          </button>
+          <button class="swatch-btn" type="button" data-wp="ios18-teal" title="iOS 18 极光青翠">
+            <span class="swatch-preview wp-teal"></span>
+            <span class="swatch-name">极光青碧</span>
+          </button>
+          <button class="swatch-btn" type="button" data-wp="sequoia-gold" title="macOS Sequoia 暖阳">
+            <span class="swatch-preview wp-gold"></span>
+            <span class="swatch-name">落日琥珀</span>
+          </button>
+          <button class="swatch-btn" type="button" data-wp="titanium-dark" title="iPhone 16 Pro 钛金属深空">
+            <span class="swatch-preview wp-titanium"></span>
+            <span class="swatch-name">深空原色钛</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Haptic Touch / Right-Click Context Menu -->
+  <div class="haptic-context-menu" id="hapticContextMenu" hidden role="menu">
+    <div class="context-header" id="contextMenuHeader">
+      <span class="context-site-title" id="contextSiteTitle">网站名称</span>
+      <span class="context-site-url" id="contextSiteUrl">example.com</span>
+    </div>
+    <button class="context-item" type="button" data-action="open">
+      <span>在新标签页打开</span>
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>
+      </svg>
+    </button>
+    <button class="context-item" type="button" data-action="dock">
+      <span id="contextDockLabel">固定到程序坞</span>
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="4" width="18" height="16" rx="3"/>
+        <path d="M3 15h18"/>
+      </svg>
+    </button>
+    <button class="context-item" type="button" data-action="copy">
+      <span>复制网址链接</span>
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="9" y="9" width="13" height="13" rx="2"/>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+      </svg>
+    </button>
+    <div class="context-divider"></div>
+    <button class="context-item danger" type="button" data-action="delete">
+      <span>从主屏幕移除</span>
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Modal 1: Unified Edit-Mode Add Website or Widget Panel -->
+  <div class="modal-backdrop" id="addSiteModal" hidden>
+    <div class="ios-modal-card add-desktop-modal-card" role="dialog" aria-modal="true" aria-labelledby="addModalTitle">
+      <div class="modal-top-bar">
+        <button type="button" class="modal-cancel-btn" id="closeAddModalBtn">完成</button>
+        <h3 id="addModalTitle">添加到当前导航页</h3>
+        <button type="button" class="modal-save-btn" id="saveSiteBtn">添加</button>
+      </div>
+
+      <div class="settings-tabs-nav add-mode-tabs-nav" id="addModalModeSwitch" role="tablist" aria-label="选择添加类型">
+        <button type="button" class="settings-tab-btn add-mode-tab active" data-add-mode="site" role="tab" aria-selected="true">添加网站</button>
+        <button type="button" class="settings-tab-btn add-mode-tab" data-add-mode="widget" role="tab" aria-selected="false">添加小组件</button>
+      </div>
+
+      <form id="addSiteForm" class="modal-form" data-add-panel="site">
+        <div class="form-group">
+          <label for="siteTitleInput">网站名称</label>
+          <input type="text" id="siteTitleInput" placeholder="例如：Apple Developer" required maxlength="100" />
+        </div>
+        <div class="form-group">
+          <label for="siteUrlInput">网址 (URL)</label>
+          <input type="url" id="siteUrlInput" placeholder="https://developer.apple.com" required />
+        </div>
+        <div class="form-row-two">
+          <div class="form-group">
+            <label for="siteCategorySelect">放置导航页</label>
+            <select id="siteCategorySelect">
+              <!-- Dynamically populated with all navigation pages -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="siteColorInput">图标主题色</label>
+            <input type="color" id="siteColorInput" value="#007aff" />
+          </div>
+        </div>
+      </form>
+
+      <section id="addWidgetPanel" class="modal-form add-widget-panel" data-add-panel="widget" hidden>
+        <p class="settings-help-text" id="addWidgetPanelDesc">选择未在桌面启用显示的小组件，添加至当前页面末尾（保留原有待办、速记与配置数据）。</p>
+        <div class="add-widgets-list" id="availableWidgetsToAddList"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Modal 2: Reserved Add Navigation Page Modal -->
+  <div class="modal-backdrop" id="addPageModal" hidden>
+    <div class="ios-modal-card" role="dialog" aria-modal="true" aria-labelledby="addPageModalTitle">
+      <div class="modal-top-bar">
+        <button type="button" class="modal-cancel-btn" id="closeAddPageModalBtn">取消</button>
+        <h3 id="addPageModalTitle">新建导航页</h3>
+        <button type="button" class="modal-save-btn" id="savePageBtn">创建</button>
+      </div>
+      <form id="addPageForm" class="modal-form">
+        <div class="form-group">
+          <label for="pageTitleInput">导航页名称</label>
+          <input type="text" id="pageTitleInput" placeholder="例如：独立开发、阅读清单、Web3" required maxlength="14" />
+        </div>
+        <div class="form-group">
+          <label for="pageIconSelect">页面徽标风格</label>
+          <select id="pageIconSelect">
+            <option value="sparkles">✦ 灵感星光 (Sparkles)</option>
+            <option value="folder">📁 专属工作区 (Workspace)</option>
+            <option value="code">⌘ 极客终端 (Terminal)</option>
+            <option value="book">📖 深度阅读 (Reading)</option>
+            <option value="globe">🌐 全球探索 (Globe)</option>
+          </select>
+        </div>
+        <div class="api-hint-box">
+          <span class="api-hint-dot"></span>
+          <span>创建后自动切换至新页面。自定义导航页保存在当前浏览器中。</span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: Location, Clock & Sync Settings Modal -->
+  <div class="modal-backdrop" id="apiConfigModal" hidden>
+    <div class="ios-modal-card settings-modal-card" role="dialog" aria-modal="true" aria-labelledby="apiModalTitle">
+      <div class="modal-top-bar">
+        <button type="button" class="modal-cancel-btn" id="closeApiModalBtn">关闭</button>
+        <h3 id="apiModalTitle">位置、时间与数据同步设置</h3>
+        <button type="button" class="modal-save-btn" id="saveApiConfigBtn">刷新状态</button>
+      </div>
+
+      <div class="settings-tabs-nav" role="tablist" aria-label="设置分类">
+        <button type="button" class="settings-tab-btn active" data-tab="location" role="tab" aria-selected="true">位置与天气</button>
+        <button type="button" class="settings-tab-btn" data-tab="clock" role="tab" aria-selected="false">时间与时区</button>
+        <button type="button" class="settings-tab-btn" data-tab="sync" role="tab" aria-selected="false">数据同步</button>
+      </div>
+
+      <div class="modal-form settings-modal-body">
+        <!-- Tab 1: Location & Weather Settings -->
+        <section class="settings-tab-panel" id="settingsPanelLocation" data-panel="location">
+          <div class="form-group">
+            <label for="locationModeSelect">定位模式（当前设备独立保存）</label>
+            <select id="locationModeSelect">
+              <option value="auto">自动（优先已授权浏览器定位，否则使用 IP 近似位置）</option>
+              <option value="browser">仅浏览器精确定位（用于查询当地天气，需授权）</option>
+              <option value="ip">IP 近似位置（使用公网或网络出口 IP 近似定位）</option>
+              <option value="manual">手动指定城市（从下方城市搜索结果中选择）</option>
+            </select>
+          </div>
+
+          <div class="settings-sub-box" id="browserGeoBox">
+            <div class="settings-row-between">
+              <span class="settings-sub-text">浏览器定位仅用于请求实况天气，精确坐标不会持久化入库。若局域网连接不支持浏览器定位，可改用 IP 近似定位或手动选择城市。</span>
+              <button type="button" class="ui-btn ui-btn-sm" id="requestBrowserGeoBtn">授权并读取浏览器位置</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="citySearchInput">搜索并选择手动城市</label>
+            <div class="city-search-bar">
+              <input type="text" id="citySearchInput" placeholder="输入城市名称（至少 2 个字符，如：上海、London）" maxlength="100" autocomplete="off" />
+              <button type="button" class="ui-btn ui-btn-primary" id="citySearchBtn">搜索城市</button>
+            </div>
+            <div class="city-search-results" id="citySearchResults"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="temperatureUnitSelect">温度显示单位</label>
+            <select id="temperatureUnitSelect">
+              <option value="celsius">摄氏度 (°C)</option>
+              <option value="fahrenheit">华氏度 (°F)</option>
+            </select>
+          </div>
+
+          <div class="api-hint-box" id="locationStatusBox">
+            <span class="api-hint-dot"></span>
+            <span id="locationStatusText">正在读取当前设备位置设置…</span>
+          </div>
+        </section>
+
+        <!-- Tab 3: Clock, TimeZone & Calibration -->
+        <section class="settings-tab-panel" id="settingsPanelClock" data-panel="clock" hidden>
+          <div class="form-row-two settings-form-grid">
+            <div class="form-group">
+              <label for="timeZoneModeSelect">时区来源模式</label>
+              <select id="timeZoneModeSelect">
+                <option value="browser">跟随浏览器时区</option>
+                <option value="location">跟随当前地点时区</option>
+                <option value="manual">手动选择 IANA 时区</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="manualTimeZoneSelect">手动 IANA 时区</label>
+              <select id="manualTimeZoneSelect"></select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="clockModeSelect">网页时钟校准方式</label>
+            <select id="clockModeSelect">
+              <option value="automatic">自动（与服务器标准时间同步）</option>
+              <option value="manual">手动校时（仅调整当前网页显示时间，不改系统时间）</option>
+            </select>
+          </div>
+
+          <div class="settings-sub-box" id="manualClockBox">
+            <div class="form-row-two settings-form-grid">
+              <div class="form-group">
+                <label for="manualDateInput">目标日期（按所选时区解释）</label>
+                <input type="text" id="manualDateInput" placeholder="YYYY-MM-DD" autocomplete="off" />
+              </div>
+              <div class="form-group">
+                <label for="manualTimeInput">目标时间（按所选时区解释）</label>
+                <input type="text" id="manualTimeInput" placeholder="HH:mm:ss" autocomplete="off" />
+              </div>
+            </div>
+
+            <div class="dst-disambiguation-box" id="dstDisambiguationBox" hidden>
+              <p class="dst-warning-text" id="dstWarningText"></p>
+              <div class="dst-options-list" id="dstOptionsList"></div>
+            </div>
+
+            <div class="settings-row-between">
+              <span class="settings-sub-text" id="clockOffsetSummaryText">当前时间偏移：0 秒</span>
+              <div class="settings-quick-actions">
+                <button type="button" class="ui-btn ui-btn-sm" id="resetAutoClockBtn">恢复标准时间</button>
+                <button type="button" class="ui-btn ui-btn-primary ui-btn-sm" id="applyManualClockBtn">应用手动校时</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="api-hint-box">
+            <span class="api-hint-dot"></span>
+            <span id="clockStatusText">当前时区与校时正常</span>
+          </div>
+        </section>
+
+        <!-- Tab 3: Sync & Backup Diagnostics -->
+        <section class="settings-tab-panel" id="settingsPanelSync" data-panel="sync" hidden>
+          <div class="api-hint-box">
+            <span class="api-hint-dot" id="syncDotPortal"></span>
+            <span id="syncModalStatusText">桌面与便签数据：已就绪</span>
+          </div>
+          <div class="api-hint-box">
+            <span class="api-hint-dot" id="syncDotWidgets"></span>
+            <span id="syncWidgetsStatusText">小组件布局与待办：已就绪</span>
+          </div>
+          <div class="api-hint-box">
+            <span class="api-hint-dot" id="syncDotDevice"></span>
+            <span id="syncDeviceStatusText">当前设备环境设置：已就绪</span>
+          </div>
+          <div class="settings-row-between">
+            <span class="settings-sub-text">当网络恢复或需要手动刷新时，可点击右侧按钮重新同步。</span>
+            <button type="button" class="ui-btn ui-btn-primary" id="retryAllSyncBtn">立即同步并刷新</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Widget Detail Overlay (Reuses Real Widget DOM & Instance) -->
+  <div class="modal-backdrop widget-detail-backdrop" id="widgetDetailModal" hidden>
+    <div class="ios-modal-card widget-detail-modal-card" role="dialog" aria-modal="true" aria-labelledby="widgetDetailModalTitle">
+      <div class="modal-top-bar">
+        <span class="widget-detail-kicker">小组件完整视图</span>
+        <h3 id="widgetDetailModalTitle">小组件详情</h3>
+        <button type="button" class="modal-cancel-btn" id="closeWidgetDetailModalBtn">完成</button>
+      </div>
+      <div class="widget-detail-stage" id="widgetDetailStage"></div>
+    </div>
+  </div>
+
+  <!-- Modal 5: Category Overflow "View All" Drawer for Extreme Data Volumes -->
+  <div class="modal-backdrop category-overflow-backdrop" id="categoryOverflowModal" hidden>
+    <div class="ios-modal-card category-overflow-modal-card" role="dialog" aria-modal="true" aria-labelledby="categoryOverflowModalTitle">
+      <div class="modal-top-bar">
+        <span class="widget-detail-kicker">容量超出单屏上限</span>
+        <h3 id="categoryOverflowModalTitle">分类全部内容</h3>
+        <button type="button" class="modal-cancel-btn" id="closeCategoryOverflowModalBtn">关闭</button>
+      </div>
+      <p class="settings-help-text" id="categoryOverflowHintText">当前分类卡片数量超出单屏紧凑容量上限，以下展示完整列表（未修改原分类或顺序）。</p>
+      <div class="apps-grid category-overflow-grid" id="categoryOverflowGrid"></div>
+    </div>
+  </div>
+
+  <!-- Modal 6: Site Folder Detail Overlay (Supports Rename, Reorder, Drag Out, Dissolve) -->
+  <div class="modal-backdrop folder-detail-backdrop" id="folderDetailModal" hidden>
+    <div class="ios-modal-card folder-detail-modal-card" role="dialog" aria-modal="true" aria-labelledby="folderDetailModalTitle">
+      <div class="modal-top-bar folder-detail-top-bar">
+        <span class="widget-detail-kicker" id="folderDetailCountBadge">文件夹 · 2 项</span>
+        <h3 id="folderDetailModalTitle">文件夹</h3>
+        <button type="button" class="modal-cancel-btn" id="closeFolderDetailModalBtn">完成</button>
+      </div>
+      <form class="folder-rename-bar" id="folderRenameForm" novalidate>
+        <input
+          type="text"
+          id="folderTitleInput"
+          class="folder-title-input"
+          maxlength="60"
+          placeholder="输入文件夹名称（1–60 字符）"
+          aria-label="文件夹名称"
+          autocomplete="off"
+        />
+        <button type="submit" class="ui-btn ui-btn-primary ui-btn-sm folder-title-save-btn" id="saveFolderTitleBtn">保存名称</button>
+        <button type="button" class="ui-btn ui-btn-sm folder-title-cancel-btn" id="cancelFolderTitleBtn">还原</button>
+      </form>
+      <p class="settings-help-text folder-rename-status" id="folderRenameStatusText" hidden></p>
+      <div class="folder-detail-body" id="folderDetailScrollBody">
+        <div class="apps-grid folder-detail-grid" id="folderDetailGrid"></div>
+      </div>
+      <div class="folder-detail-footer">
+        <span class="settings-sub-text">长按图标或开启编辑可调整顺序，将图标拖出弹窗外可移回桌面</span>
+        <button type="button" class="ui-btn ui-btn-sm folder-dissolve-btn" id="dissolveFolderBtn">解散文件夹</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="backend-client.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "agy-navigation",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "start": "npm --prefix backend start",
+    "test": "npm --prefix backend test",
+    "build:extension": "node backend/extension/build.js",
+    "export:extension": "node backend/extension/export-data.js"
+  }
+}

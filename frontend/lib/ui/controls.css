@@ -1,0 +1,711 @@
+/* ==========================================================================
+   Shared iOS 18 UI Controls & Theme Variables (frontend/lib/ui/controls.css)
+   ========================================================================== */
+:root {
+  --ui-control-bg: rgba(255, 255, 255, 0.1);
+  --ui-control-bg-hover: rgba(255, 255, 255, 0.16);
+  --ui-control-bg-active: rgba(255, 255, 255, 0.22);
+  --ui-control-border: rgba(255, 255, 255, 0.2);
+  --ui-control-border-focus: rgba(100, 210, 255, 0.85);
+  --ui-control-text: rgba(255, 255, 255, 0.94);
+  --ui-control-text-muted: rgba(255, 255, 255, 0.62);
+  --ui-control-radius-sm: 9px;
+  --ui-control-radius-md: 12px;
+  --ui-control-radius-pill: 999px;
+  --ui-accent-blue: #0a84ff;
+  --ui-accent-green: #30d158;
+  --ui-accent-pink: #ff375f;
+  --ui-accent-cyan: #64d2ff;
+  --ui-popover-bg: rgba(22, 25, 38, 0.94);
+  --ui-popover-border: rgba(255, 255, 255, 0.24);
+  --ui-popover-shadow: 0 22px 48px -8px rgba(0, 0, 0, 0.65), inset 0 1px 0 0 rgba(255, 255, 255, 0.28);
+  --ui-focus-ring: 0 0 0 2.5px rgba(100, 210, 255, 0.45);
+}
+
+/* 1. Content-Driven Text Buttons vs Fixed-Size Icon Buttons */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-height: 32px;
+  padding: 6px 13px;
+  border-radius: var(--ui-control-radius-md);
+  border: 1px solid var(--ui-control-border);
+  background: var(--ui-control-bg);
+  color: var(--ui-control-text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease, opacity 0.18s ease;
+}
+
+.ui-btn:hover:not(:disabled) {
+  background: var(--ui-control-bg-hover);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.ui-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.ui-btn:focus-visible {
+  outline: none;
+  border-color: var(--ui-control-border-focus);
+  box-shadow: var(--ui-focus-ring);
+}
+
+.ui-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.ui-btn-sm {
+  min-height: 27px;
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: var(--ui-control-radius-sm);
+}
+
+.ui-btn-pill {
+  border-radius: var(--ui-control-radius-pill);
+}
+
+.ui-btn-primary {
+  background: linear-gradient(180deg, #1a8cff 0%, #0070e0 100%);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+.ui-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #3399ff 0%, #0a84ff 100%);
+}
+
+.ui-btn-accent {
+  background: linear-gradient(180deg, #34d85c 0%, #24b247 100%);
+  border-color: rgba(255, 255, 255, 0.26);
+  color: #07190c;
+  font-weight: 700;
+}
+
+.ui-btn-accent:hover:not(:disabled) {
+  background: linear-gradient(180deg, #4ae270 0%, #2ec452 100%);
+}
+
+.ui-btn-danger {
+  background: rgba(255, 69, 58, 0.2);
+  border-color: rgba(255, 69, 58, 0.45);
+  color: #ff6961;
+}
+
+.ui-btn-danger:hover:not(:disabled) {
+  background: rgba(255, 69, 58, 0.32);
+}
+
+/* Fixed-size Icon Button */
+.ui-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: var(--ui-control-radius-sm);
+  border: 1px solid var(--ui-control-border);
+  background: var(--ui-control-bg);
+  color: var(--ui-control-text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.ui-icon-btn:hover:not(:disabled) {
+  background: var(--ui-control-bg-hover);
+}
+
+.ui-icon-btn.ui-icon-btn-danger:hover:not(:disabled) {
+  background: rgba(255, 69, 58, 0.25);
+  border-color: rgba(255, 69, 58, 0.5);
+  color: #ff6961;
+}
+
+.ui-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.ui-icon-btn:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+/* 2. iOS 18 Toggle Switch (Widget Enable/Disable) */
+.ui-switch-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ui-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.ui-switch-track {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  transition: background 0.22s ease, border-color 0.22s ease;
+  flex-shrink: 0;
+}
+
+.ui-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.38);
+  transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.ui-switch-input:checked + .ui-switch-track {
+  background: var(--ui-accent-green);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.ui-switch-input:checked + .ui-switch-track .ui-switch-thumb {
+  transform: translateX(18px);
+}
+
+.ui-switch-input:focus-visible + .ui-switch-track {
+  box-shadow: var(--ui-focus-ring);
+}
+
+.ui-switch-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-control-text);
+}
+
+/* 3. iOS 18 Rounded Checkmark Control (Todo Item Completion) */
+.ui-checkbox-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.ui-checkbox-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.ui-checkbox-box {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.ui-checkbox-input:checked + .ui-checkbox-box {
+  background: var(--ui-accent-green);
+  border-color: var(--ui-accent-green);
+  color: #07190c;
+}
+
+.ui-checkbox-input:focus-visible + .ui-checkbox-box {
+  box-shadow: var(--ui-focus-ring);
+}
+
+/* 4. Custom Select / Combobox Trigger & Portal Popover */
+.ui-select-native-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  border: 0 !important;
+  pointer-events: none !important;
+}
+
+.ui-select-wrap {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.ui-select-trigger {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 11px;
+  border-radius: var(--ui-control-radius-md);
+  border: 1px solid var(--ui-control-border);
+  background: var(--ui-control-bg);
+  color: var(--ui-control-text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.ui-select-wrap.ui-select-compact .ui-select-trigger {
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 11.5px;
+  border-radius: var(--ui-control-radius-sm);
+}
+
+.ui-select-trigger:hover {
+  background: var(--ui-control-bg-hover);
+}
+
+.ui-select-trigger:focus-visible,
+.ui-select-trigger[aria-expanded="true"] {
+  outline: none;
+  border-color: var(--ui-control-border-focus);
+  box-shadow: var(--ui-focus-ring);
+}
+
+.ui-select-trigger-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-select-chevron {
+  font-size: 10px;
+  color: var(--ui-control-text-muted);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.ui-select-trigger[aria-expanded="true"] .ui-select-chevron {
+  transform: rotate(180deg);
+}
+
+/* Portal Popover Container (Appended to document.body to prevent overflow clipping) */
+.ui-popover-portal {
+  position: fixed;
+  z-index: 260;
+  min-width: 200px;
+  max-width: min(360px, calc(100vw - 16px));
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--ui-popover-bg);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid var(--ui-popover-border);
+  box-shadow: var(--ui-popover-shadow);
+  color: var(--ui-control-text);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-popover-search {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--ui-control-border);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.ui-popover-search:focus {
+  border-color: var(--ui-control-border-focus);
+}
+
+.ui-popover-list {
+  max-height: 210px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 2px;
+}
+
+.ui-popover-option {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--ui-control-text);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.ui-popover-option:hover,
+.ui-popover-option.is-active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.ui-popover-option[aria-selected="true"] {
+  background: rgba(10, 132, 255, 0.28);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.ui-popover-empty {
+  padding: 10px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ui-control-text-muted);
+}
+
+/* 5. Shared Date Picker & Time Picker Controls */
+.ui-datetime-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 5px 3px 10px;
+  border-radius: var(--ui-control-radius-md);
+  border: 1px solid var(--ui-control-border);
+  background: var(--ui-control-bg);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ui-datetime-field.ui-datetime-compact {
+  padding: 2px 4px 2px 8px;
+  border-radius: var(--ui-control-radius-sm);
+}
+
+.ui-datetime-field:focus-within {
+  border-color: var(--ui-control-border-focus);
+  box-shadow: var(--ui-focus-ring);
+}
+
+.ui-datetime-input {
+  flex: 1;
+  min-width: 0;
+  border: none !important;
+  background: transparent !important;
+  color: var(--ui-control-text) !important;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px !important;
+  padding: 4px 0 !important;
+  outline: none !important;
+}
+
+.ui-datetime-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ui-control-text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ui-datetime-trigger-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* DatePicker Calendar Popover */
+.ui-datepicker-popover {
+  width: 268px;
+}
+
+.ui-dp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ui-dp-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.ui-dp-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ui-dp-weekdays,
+.ui-dp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  text-align: center;
+  gap: 2px;
+}
+
+.ui-dp-weekday {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ui-control-text-muted);
+  padding: 2px 0;
+}
+
+.ui-dp-day {
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ui-control-text);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.ui-dp-day:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.ui-dp-day.is-today {
+  border: 1px solid var(--ui-accent-pink);
+  color: #ff6961;
+  font-weight: 700;
+}
+
+.ui-dp-day.is-selected {
+  background: var(--ui-accent-blue);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.ui-dp-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* TimePicker Popover */
+.ui-timepicker-popover {
+  width: 248px;
+}
+
+.ui-tp-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ui-tp-col-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ui-tp-col-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ui-control-text-muted);
+  text-align: center;
+}
+
+.ui-tp-col {
+  max-height: 156px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ui-tp-cell {
+  padding: 5px 0;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--ui-control-text);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.ui-tp-cell:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.ui-tp-cell.is-selected {
+  background: var(--ui-accent-blue);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* 6. Unified Choice Group (DST Disambiguation Radio Cards) */
+.ui-choice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-choice-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ui-control-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ui-choice-option.is-selected {
+  background: rgba(10, 132, 255, 0.24);
+  border-color: rgba(100, 210, 255, 0.7);
+}
+
+/* 7. Unified Subtle External Attribution Link (.weather-provider-link) */
+.weather-provider-link,
+.weather-provider-link:link,
+.weather-provider-link:visited {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1.5px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.weather-provider-link:hover,
+.weather-provider-link:active {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.weather-provider-link:focus-visible {
+  outline: none;
+  border-color: var(--ui-control-border-focus);
+  box-shadow: var(--ui-focus-ring);
+  color: #ffffff;
+}
+
+/* 8. Unified Custom Scrollbars Across Lists, Popovers & Panels */
+.todo-list-container,
+.world-clock-list,
+.city-search-results,
+.settings-tab-panel,
+.ui-popover-list,
+.ui-tp-col {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) rgba(255, 255, 255, 0.05);
+}
+
+.todo-list-container::-webkit-scrollbar,
+.world-clock-list::-webkit-scrollbar,
+.city-search-results::-webkit-scrollbar,
+.settings-tab-panel::-webkit-scrollbar,
+.ui-popover-list::-webkit-scrollbar,
+.ui-tp-col::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.todo-list-container::-webkit-scrollbar-track,
+.world-clock-list::-webkit-scrollbar-track,
+.city-search-results::-webkit-scrollbar-track,
+.settings-tab-panel::-webkit-scrollbar-track,
+.ui-popover-list::-webkit-scrollbar-track,
+.ui-tp-col::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+
+.todo-list-container::-webkit-scrollbar-thumb,
+.world-clock-list::-webkit-scrollbar-thumb,
+.city-search-results::-webkit-scrollbar-thumb,
+.settings-tab-panel::-webkit-scrollbar-thumb,
+.ui-popover-list::-webkit-scrollbar-thumb,
+.ui-tp-col::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+}
+
+.todo-list-container::-webkit-scrollbar-thumb:hover,
+.world-clock-list::-webkit-scrollbar-thumb:hover,
+.city-search-results::-webkit-scrollbar-thumb:hover,
+.settings-tab-panel::-webkit-scrollbar-thumb:hover,
+.ui-popover-list::-webkit-scrollbar-thumb:hover,
+.ui-tp-col::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.46);
+}

@@ -1,0 +1,33 @@
+node_modules/
+data/
+.env
+.env.*
+!.env.example
+!.env.sample
+.DS_Store
+backend/extension/dist/
+
+# Local collaboration history and superseded proposals contain workstation paths.
+/TASK.md
+/BACKEND_API_SPEC.md
+
+# Runtime state, backups, credentials and local tool configuration.
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log
+*.pid
+*.pem
+*.key
+*.p12
+*.pfx
+*.zip
+.codex/
+.agents/
+.agy/
+.gemini/
+.antigravity/
+.idea/
+.vscode/
+coverage/
