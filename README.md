@@ -1,4 +1,4 @@
-# LaunchDeck · AGY 智能起始页
+# LaunchDeck · 智能起始页
 
 iOS 风格的导航桌面，支持网页服务和 Chrome / Edge 独立新标签页扩展。
 

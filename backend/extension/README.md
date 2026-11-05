@@ -1,4 +1,4 @@
-# AGY 独立新标签页扩展
+# LaunchDeck 独立新标签页扩展
 
 适用于桌面版 Google Chrome 与 Microsoft Edge，Manifest V3。替换新标签页，完整打包现有页面、组件、本地数据服务与校验模块。导航、便签、待办、组件布局、时间与地区设置无需 Node.js 或 SQLite 服务；天气和城市搜索按需联网。
 
