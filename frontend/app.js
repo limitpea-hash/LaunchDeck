@@ -68,6 +68,7 @@ import {
   buildScreenViewsModel,
   resolveViewDropBeforeAnchor,
 } from './lib/display-mode.js';
+import { createLocalWallpaperController } from './lib/local-wallpaper.js';
 
 const STORAGE_KEYS = {
   PAGES: 'ios18_nav_pages_v1',
@@ -1002,8 +1003,9 @@ function applyPreferencesToDOM() {
     btn.classList.toggle('active', btn.dataset.size === iconSize);
   });
 
+  const isCustomWallpaper = Boolean(localWallpaperController?.isCustomWallpaperActive?.());
   document.querySelectorAll('.swatch-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.wp === wallpaper);
+    btn.classList.toggle('active', !isCustomWallpaper && btn.dataset.wp === wallpaper);
   });
 
   const dimBtn = document.getElementById('dimWallpaperBtn');
@@ -1654,12 +1656,12 @@ function renderAll({ preserveCategoryPageId = null } = {}) {
 
 function createGlyphNode(site) {
   const wrapper = el('div', { className: 'app-glyph' });
-  // Prefer explicit iconKey or exact-domain preset via window.AGYIcons; remaining sites keep .app-glyph-letter for extension favicon enhancement
+  // Prefer explicit iconKey or exact-domain preset via window.LaunchDeckIcons; remaining sites keep .app-glyph-letter for extension favicon enhancement
   const presetKey =
     typeof site?.iconKey === 'string' && Object.hasOwn(ICONS, site.iconKey)
       ? site.iconKey
-      : typeof window !== 'undefined' && typeof window.AGYIcons?.presetKey === 'function'
-        ? window.AGYIcons.presetKey(site)
+      : typeof window !== 'undefined' && typeof window.LaunchDeckIcons?.presetKey === 'function'
+        ? window.LaunchDeckIcons.presetKey(site)
         : null;
   if (typeof presetKey === 'string' && Object.hasOwn(ICONS, presetKey)) {
     wrapper.innerHTML = ICONS[presetKey];
@@ -3978,6 +3980,12 @@ function triggerExternalSearch() {
 // ==========================================================================
 // iOS 18 Home Screen Customization Sheet
 // ==========================================================================
+const localWallpaperController = createLocalWallpaperController({
+  onWallPaperStateChange: () => {
+    applyPreferencesToDOM();
+  },
+});
+
 function initCustomizeSheet() {
   const openBtn = document.getElementById('openCustomizeBtn');
   const closeBtn = document.getElementById('closeCustomizeBtn');
@@ -3986,6 +3994,9 @@ function initCustomizeSheet() {
   const hueRange = document.getElementById('tintHueRange');
   const satRange = document.getElementById('tintSatRange');
   const dimBtn = document.getElementById('dimWallpaperBtn');
+
+  localWallpaperController.bindDOMEvents();
+  localWallpaperController.restoreFromStorage();
 
   if (openBtn) openBtn.addEventListener('click', () => toggleCustomizeSheet());
   if (closeBtn) closeBtn.addEventListener('click', () => toggleCustomizeSheet(false));
@@ -4039,15 +4050,26 @@ function initCustomizeSheet() {
   }
 
   document.querySelectorAll('.swatch-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.prefs.wallpaper = btn.dataset.wp;
+    btn.addEventListener('click', async () => {
+      const nextWp = btn.dataset.wp;
+      const cleared = await localWallpaperController.clearCustomWallpaper({ silent: true });
+      if (!cleared) {
+        applyPreferencesToDOM();
+        return;
+      }
+      state.prefs.wallpaper = nextWp;
       savePrefsToStorage();
       applyPreferencesToDOM();
     });
   });
 
   if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
+    resetBtn.addEventListener('click', async () => {
+      const cleared = await localWallpaperController.clearCustomWallpaper({ silent: true });
+      if (!cleared) {
+        applyPreferencesToDOM();
+        return;
+      }
       state.pages = structuredClone(DEFAULT_PAGES);
       state.sites = structuredClone(DEFAULT_SITES);
       state.currentPageIndex = 0;
@@ -4082,6 +4104,9 @@ function toggleCustomizeSheet(forceState) {
   const openBtn = document.getElementById('openCustomizeBtn');
   if (!sheet) return;
   const next = typeof forceState === 'boolean' ? forceState : !sheet.classList.contains('open');
+  if (!next && localWallpaperController.hasPendingPreview()) {
+    localWallpaperController.cancelPreview({ silent: true });
+  }
   sheet.classList.toggle('open', next);
   sheet.setAttribute('aria-hidden', String(!next));
   if (openBtn) openBtn.classList.toggle('active-pill', next);
@@ -4781,9 +4806,14 @@ function openApiConfigModal(tabName = 'location') {
   const modal = document.getElementById('apiConfigModal');
   if (!modal) return;
   closeAllPopovers();
+  toggleCustomizeSheet(false);
+  closeWidgetDetailModal({ restoreFocus: false, recalibrateAfterClose: false });
+  closeCategoryOverflowModal({ recalibrateAfterClose: false });
+  closeFolderDetailModal({ restoreFocus: false, recalibrateAfterClose: false });
   syncSettingsControlsFromState();
   switchSettingsTab(tabName);
   modal.hidden = false;
+  document.getElementById('closeApiModalBtn')?.focus?.({ preventScroll: true });
 }
 
 function initEditAndModals() {
@@ -5580,5 +5610,6 @@ export {
   clockController,
   featureClient,
   widgetHost,
+  localWallpaperController,
   WIDGET_MODULE_MAP,
 };

@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>iOS 18 SpringBoard — 智能起始页与多页导航中心</title>
+  <title>新标签页</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="lib/ui/controls.css" />
 </head>
 <body data-icon-mode="light" data-icon-size="small" data-wallpaper="ios18-bloom">
   <!-- Dynamic iOS 18 Mesh Wallpaper Layer -->
   <div class="wallpaper-stage" id="wallpaperStage" aria-hidden="true">
+    <img class="custom-wallpaper-image" id="customWallpaperImage" alt="" hidden />
     <div class="wallpaper-dimmer" id="wallpaperDimmer"></div>
     <div class="mesh-orb orb-1"></div>
     <div class="mesh-orb orb-2"></div>
@@ -334,6 +335,31 @@
             <span class="swatch-preview wp-titanium"></span>
             <span class="swatch-name">深空原色钛</span>
           </button>
+        </div>
+
+        <div class="custom-wallpaper-controls" id="customWallpaperControls">
+          <div class="custom-wallpaper-actions-row">
+            <span class="picker-label">本地图片壁纸（PNG / JPEG / WebP，≤ 10 MiB）</span>
+            <div class="custom-wallpaper-btn-group">
+              <input type="file" id="customWallpaperInput" accept="image/png,image/jpeg,image/webp" hidden />
+              <button class="sheet-text-btn" type="button" id="selectCustomWallpaperBtn">选择本地图片</button>
+              <button class="sheet-text-btn" type="button" id="restorePresetWallpaperBtn" hidden>恢复预设壁纸</button>
+            </div>
+          </div>
+
+          <div class="custom-wallpaper-preview-panel" id="customWallpaperPreviewPanel" hidden>
+            <img class="custom-wallpaper-preview-thumb" id="customWallpaperPreviewImg" alt="壁纸预览" />
+            <div class="custom-wallpaper-preview-info">
+              <span class="custom-wallpaper-preview-title">待应用壁纸预览</span>
+              <span class="custom-wallpaper-preview-meta" id="customWallpaperPreviewMeta"></span>
+              <div class="custom-wallpaper-preview-actions">
+                <button class="sheet-text-btn custom-wallpaper-apply-btn" type="button" id="applyCustomWallpaperBtn">应用壁纸</button>
+                <button class="sheet-text-btn" type="button" id="cancelCustomWallpaperBtn">取消</button>
+              </div>
+            </div>
+          </div>
+
+          <p class="custom-wallpaper-status" id="customWallpaperStatusText" role="status" aria-live="polite" hidden></p>
         </div>
       </div>
     </div>

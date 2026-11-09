@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LaunchDeck",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "独立的新标签页：导航、便签、待办与小组件保存在当前浏览器，天气按需联网。",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "favicon"],

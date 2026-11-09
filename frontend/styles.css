@@ -67,6 +67,29 @@ html, body {
   transition: background 0.9s var(--spring-soft);
 }
 
+.custom-wallpaper-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 3;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.custom-wallpaper-image[hidden] {
+  display: none !important;
+}
+
+body[data-custom-wallpaper="active"] .ios18-arch,
+body[data-custom-wallpaper="active"] .mesh-orb {
+  opacity: 0;
+  animation-play-state: paused;
+}
+
 .wallpaper-dimmer {
   position: absolute;
   inset: 0;
@@ -1848,6 +1871,9 @@ body.jiggle-mode .ios-widget {
   bottom: max(14px, env(safe-area-inset-bottom));
   transform: translate(-50%, 130%);
   width: min(620px, calc(100vw - 24px));
+  max-height: calc(100dvh - 28px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 12px 20px 20px;
   border-radius: 30px;
   background: rgba(22, 24, 34, 0.86);
@@ -2126,6 +2152,108 @@ body.jiggle-mode .ios-widget {
 .swatch-name {
   font-size: 10.5px;
   font-weight: 500;
+}
+
+.custom-wallpaper-controls {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.custom-wallpaper-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.custom-wallpaper-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.custom-wallpaper-preview-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.custom-wallpaper-preview-panel[hidden],
+.custom-wallpaper-status[hidden],
+.sheet-text-btn[hidden] {
+  display: none !important;
+}
+
+.custom-wallpaper-preview-thumb {
+  width: 84px;
+  height: 52px;
+  border-radius: 9px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+}
+
+.custom-wallpaper-preview-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.custom-wallpaper-preview-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.custom-wallpaper-preview-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.custom-wallpaper-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.custom-wallpaper-apply-btn {
+  background: rgba(10, 132, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+.sheet-text-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.custom-wallpaper-status {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.custom-wallpaper-status[data-status-tone="error"] {
+  color: #ff6961;
+}
+
+.custom-wallpaper-status[data-status-tone="success"] {
+  color: #30d158;
 }
 
 /* Haptic Touch Context Menu & Modals */
