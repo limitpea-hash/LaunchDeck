@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "AGY 智能起始页",
-  "version": "0.5.1",
+  "name": "LaunchDeck",
+  "version": "0.6.0",
   "description": "独立的新标签页：导航、便签、待办与小组件保存在当前浏览器，天气按需联网。",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "favicon"],
@@ -14,6 +14,6 @@
   "chrome_url_overrides": { "newtab": "index.html" },
   "background": { "service_worker": "platform/extension/runtime/worker.js", "type": "module" },
   "content_security_policy": {
-    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; connect-src 'self' https://api.open-meteo.com https://geocoding-api.open-meteo.com https://ipapi.co; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'self'"
+    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; connect-src 'self' https://api.open-meteo.com https://geocoding-api.open-meteo.com https://ipapi.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; form-action 'self'"
   }
 }

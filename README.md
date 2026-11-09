@@ -9,7 +9,7 @@ iOS 风格的导航桌面，支持网页服务和 Chrome / Edge 独立新标签�
 
 ## 使用扩展
 
-在本仓库的 **Releases** 下载 `agy-new-tab.zip` 并解压。在 Chrome 的 `chrome://extensions/` 或 Edge 的 `edge://extensions/` 打开开发者模式，选择“加载已解压的扩展程序”，选中包含 `manifest.json` 的目录。
+在本仓库的 **Releases** 下载 `launchdeck-new-tab.zip` 并解压。在 Chrome 的 `chrome://extensions/` 或 Edge 的 `edge://extensions/` 打开开发者模式，选择“加载已解压的扩展程序”，选中包含 `manifest.json` 的目录。
 
 新建标签页即可使用；要在启动浏览器时也显示此页，可将浏览器“启动时”设为“打开新标签页”。扩展独立运行，无需启动后端。已有安装更新时，重新加载扩展并刷新新标签页。
 
@@ -45,4 +45,6 @@ npm run build:extension
 | [功能接口](backend/FEATURE_API.md) | 小组件、布局、时间与天气契约 |
 | [代码规范](CODING_STANDARDS.md) | DIY 扩展与安全约定 |
 
-当前扩展版本为 **0.5.1**。自动化与浏览器窄屏检查已完成；手机真机手势及 Chrome / Edge 的实际安装体验仍需设备验证。
+当前扩展版本为 **0.6.0**，统一扩展名称和安装包命名，扩展标签标题显示“新标签页”，兼容旧版数据及备份。升级已加载的扩展时，请将新版内容覆盖到原目录，保留加载路径后重新加载，先导出备份。
+
+自定义壁纸上传、网页源标题及时钟天气详情中的设置弹层修复尚待前端版本完成。Bitwarden 通行密钥自动备份未启用，核验依据见 [兼容性报告](backend/extension/BITWARDEN_COMPATIBILITY.md)。手机真机手势及 Chrome / Edge 的实际安装体验仍需设备验证。

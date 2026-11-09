@@ -5,7 +5,8 @@ import { check, timeZone } from '../../features/schema.js';
 import { createLocalDocuments } from './documents.js';
 import { browserFaviconUrl, faviconPageUrl } from './favicons.js';
 
-export const RPC_CHANNEL = 'agy-extension-api-v1';
+export const RPC_CHANNEL = 'launchdeck-extension-api-v1';
+export const LEGACY_RPC_CHANNEL = 'agy-extension-api-v1';
 
 function query(url, names) {
   const seen = new Set();
@@ -115,7 +116,7 @@ export function createExtensionApi({ storage, environment, extensionId, permissi
       const ownUrl = typeof sender?.url === 'string' && sender.url.startsWith(prefix);
       const newTab = ['chrome://newtab/', 'edge://newtab/'].includes(sender?.url) && sender.origin === prefix.slice(0, -1);
       if (sender?.id !== extensionId || (!ownUrl && !newTab)) throw new HttpError(403, '只接受当前扩展页面的请求');
-      if (message?.channel !== RPC_CHANNEL) throw new HttpError(400, '消息格式不正确');
+      if (![RPC_CHANNEL, LEGACY_RPC_CHANNEL].includes(message?.channel)) throw new HttpError(400, '消息格式不正确');
       const key = sender.documentId || String(sender.tab?.id ?? sender.url);
       const previous = rate.get(key);
       const entry = previous && previous.until > now() ? previous : { count: 0, until: now() + 60000 };

@@ -4,7 +4,8 @@ import { defaultDeviceSettings, validateSettingsPatch } from '../../features/set
 import { record, check } from '../../features/schema.js';
 import { validateBrowserData } from './backup.js';
 
-export const STORE_KEY = 'agy_extension_documents_v1';
+export const STORE_KEY = 'launchdeck_extension_documents_v1';
+export const LEGACY_STORE_KEY = 'agy_extension_documents_v1';
 
 function document(state) {
   return { revision: 0, state, updatedAt: null };
@@ -19,7 +20,10 @@ export function createLocalDocuments(storage, { now = Date.now } = {}) {
   let queue = Promise.resolve();
 
   async function readAll() {
-    const saved = (await storage.get(STORE_KEY))[STORE_KEY];
+    let saved = (await storage.get(STORE_KEY))[STORE_KEY];
+    // Read the previous release in place. First successful mutation writes the new key;
+    // keeping the old entry intact makes a failed migration recoverable.
+    if (saved === undefined) saved = (await storage.get(LEGACY_STORE_KEY))[LEGACY_STORE_KEY];
     if (saved === undefined) return defaults();
     if (!saved || saved.schemaVersion !== 1 || !saved.portal || !saved.widgets || !saved.device) {
       throw new HttpError(503, '本地数据版本无法识别，请先备份数据再检查扩展版本');
@@ -67,13 +71,13 @@ export function createLocalDocuments(storage, { now = Date.now } = {}) {
     async exportData() {
       await queue;
       const all = await readAll();
-      return { format: 'agy-new-tab', version: 1, exportedAt: new Date(now()).toISOString(),
+      return { format: 'launchdeck-new-tab', version: 1, exportedAt: new Date(now()).toISOString(),
         portal: all.portal.state, widgets: all.widgets.state, device: all.device.state, browserData: all.browserData ?? null };
     },
     importData(input) {
       return serialize(async () => {
         record(input, ['format', 'version', 'exportedAt', 'portal', 'widgets', 'device', 'browserData'], '备份文件');
-        check(input.format === 'agy-new-tab' && input.version === 1, '备份格式或版本不正确');
+        check(['launchdeck-new-tab', 'agy-new-tab'].includes(input.format) && input.version === 1, '备份格式或版本不正确');
         if (input.portal !== null) validatePatch(input.portal, true);
         validateWidgetDocument(input.widgets);
         record(input.device, ['location', 'clock', 'weather'], '设备备份');

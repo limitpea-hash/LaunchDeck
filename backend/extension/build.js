@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
 export const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
-const MARKER = '.agy-generated.json';
+const MARKER = '.launchdeck-generated.json';
 const SOURCE_FILES = ['validation.js', 'features/schema.js', 'features/widgets.js', 'features/settings.js', 'features/provider-data.js'];
 
 async function filesBelow(directory, prefix = '') {
@@ -62,12 +62,13 @@ export function extractIconPresets(source) {
 
 export async function buildExtension({ sourceRoot = projectRoot, outputRoot = join(sourceRoot, 'backend/extension/dist'), zip = true } = {}) {
   await mkdir(outputRoot, { recursive: true });
-  const staging = await mkdtemp(join(outputRoot, '.agy-build-'));
-  const target = join(outputRoot, 'agy-new-tab');
-  const previous = join(outputRoot, 'agy-new-tab.previous');
+  const staging = await mkdtemp(join(outputRoot, '.launchdeck-build-'));
+  const target = join(outputRoot, 'launchdeck-new-tab');
+  const previous = join(outputRoot, 'launchdeck-new-tab.previous');
   const sourceManifest = JSON.parse(await readFile(join(sourceRoot, 'backend/extension/manifest.json'), 'utf8'));
   const checksums = {};
   const adaptations = {};
+  const displayAdaptations = {};
   let replaced = false;
   try {
     for (const { path, name } of await filesBelow(join(sourceRoot, 'frontend'))) {
@@ -80,8 +81,20 @@ export async function buildExtension({ sourceRoot = projectRoot, outputRoot = jo
         content = adapted.result;
         adaptations[name] = adapted.replacements;
       }
+      if (name === 'app.js') {
+        // Package metadata can advance independently while the web frontend is
+        // maintained separately. Keep its source untouched and use the runtime's
+        // current namespace in the generated extension only.
+        const app = content.toString();
+        displayAdaptations.iconNamespace = (app.match(/\bwindow\.AGYIcons\b/g) || []).length;
+        content = app.replace(/\bwindow\.AGYIcons\b/g, 'window.LaunchDeckIcons');
+        if (!content.includes('window.LaunchDeckIcons')) throw new Error('前端图标入口发生变化，请检查扩展适配。');
+      }
       if (name === 'index.html') {
         let html = original.toString();
+        if ([...html.matchAll(/<title\b[^>]*>[\s\S]*?<\/title>/gi)].length !== 1) throw new Error('页面必须包含一个标签页标题。');
+        html = html.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, '<title>新标签页</title>');
+        displayAdaptations.tabTitle = '新标签页';
         const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
         if (scripts.length !== 2 || !scripts.some(item => /src=["']backend-client\.js["']/.test(item[1])) || !scripts.some(item => /src=["']app\.js["']/.test(item[1]))) throw new Error('页面脚本入口发生变化，请更新扩展打包入口。');
         if (scripts.some(item => item[2].trim())) throw new Error('扩展页面不允许内联脚本。');
@@ -110,7 +123,7 @@ export async function buildExtension({ sourceRoot = projectRoot, outputRoot = jo
     const iconPresets = extractIconPresets(await readFile(join(sourceRoot, 'frontend/app.js'), 'utf8'));
     await writeFile(join(staging, 'platform/extension/icon-presets.js'), `// Generated from reviewed local SVG constants. No external icon source is implied.\nexport const iconPresets = ${JSON.stringify(iconPresets)};\n`);
     await writeFile(join(staging, 'manifest.json'), JSON.stringify(sourceManifest, null, 2) + '\n');
-    await writeFile(join(staging, MARKER), JSON.stringify({ generatedBy: 'AGY', schemaVersion: 1, sourceChecksums: checksums, protocolAdaptations: adaptations }, null, 2));
+    await writeFile(join(staging, MARKER), JSON.stringify({ generatedBy: 'LaunchDeck', schemaVersion: 1, sourceChecksums: checksums, protocolAdaptations: adaptations, displayAdaptations }, null, 2));
     const builtFiles = await filesBelow(staging);
     for (const { path, name } of builtFiles.filter(item => item.name.endsWith('.js'))) {
       const source = await readFile(path, 'utf8');
@@ -129,21 +142,21 @@ export async function buildExtension({ sourceRoot = projectRoot, outputRoot = jo
       let marker;
       try { marker = JSON.parse(await readFile(join(target, MARKER), 'utf8')); }
       catch { throw new Error('输出目录缺少构建标记，拒绝覆盖现有文件。'); }
-      if (marker.generatedBy !== 'AGY') throw new Error('输出目录中已有非构建文件，拒绝覆盖。');
-      try { await lstat(previous); throw new Error('存在上一次未完成的构建备份，请先检查 agy-new-tab.previous。'); }
+      if (marker.generatedBy !== 'LaunchDeck') throw new Error('输出目录中已有非构建文件，拒绝覆盖。');
+      try { await lstat(previous); throw new Error('存在上一次未完成的构建备份，请先检查 launchdeck-new-tab.previous。'); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       await rename(target, previous);
       replaced = true;
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
     await rename(staging, target);
     if (replaced) await rm(previous, { recursive: true });
-    const archive = join(outputRoot, 'agy-new-tab.zip');
+    const archive = join(outputRoot, 'launchdeck-new-tab.zip');
     if (zip) {
       await rm(archive, { force: true });
       const result = spawnSync('/usr/bin/zip', ['-X', '-q', '-r', archive, '.'], { cwd: target, encoding: 'utf8' });
       if (result.status !== 0) throw new Error(`生成 ZIP 失败：${result.stderr || result.error?.message}`);
     }
-    return { directory: target, archive: zip ? archive : null, files: builtFiles.length, adaptations };
+    return { directory: target, archive: zip ? archive : null, files: builtFiles.length, adaptations, displayAdaptations };
   } catch (error) {
     await rm(staging, { recursive: true, force: true });
     if (replaced) {

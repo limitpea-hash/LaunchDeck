@@ -18,6 +18,10 @@
 
 手机文件夹使用独立滚动区：普通触控竖滑浏览成员，长按接续拖动，多指保留缩放，输入/键盘变化期间保持弹层。自动化与桌面浏览器窄屏检查不代替手机真机体验。
 
+0.6.0 统一使用 LaunchDeck 扩展名称、安装目录及下载文件名，旧版扩展文档和旧格式 JSON 备份继续兼容。旧文档在首次成功修改时迁移，写入失败会保留旧数据；不会因更名重置导航、布局或小组件内容。Bitwarden 通行密钥自动备份未启用，固定版本源码核验和真实测试范围见 [兼容性报告](BITWARDEN_COMPATIBILITY.md)。
+
+此版先交付可独立完成的扩展部分：生成的扩展标签标题为“新标签页”，生成代码使用LaunchDeck图标接口；网页前端源码保持原样。自定义壁纸上传和时钟天气详情中的设置弹层修复尚未包含在本版。
+
 0.5.1 移除编辑模式下卡片底部的左右移动箭头与空占位，保留拖动排序、边缘跨页和页面两侧翻页。Dock 渲染全部固定网站：空间足够时居中完整展示，实际宽度不足时仅网站区横向滚动，右侧两个操作按钮固定可达。支持鼠标拖动、滚轮/触控板、键盘聚焦；触摸与手写笔保留浏览器原生横滑及缩放。窗口变宽后自动清除滚动偏移。数据格式、保存接口和权限不变。
 
 ## 构建与产物
@@ -30,21 +34,23 @@ npm run build:extension
 
 生成：
 
-- `backend/extension/dist/agy-new-tab/`：可直接通过开发者模式加载的目录，内含 manifest.json。
-- `backend/extension/dist/agy-new-tab.zip`：同一目录的压缩包，可用于传送；开发者模式加载前先解压。
+- `backend/extension/dist/launchdeck-new-tab/`：可直接通过开发者模式加载的目录，内含 manifest.json。
+- `backend/extension/dist/launchdeck-new-tab.zip`：同一目录的压缩包，可用于传送；开发者模式加载前先解压。
 
-构建器只复制允许的前端资源和纯 JavaScript 校验模块，不复制 SQLite、Cookie、环境文件、个人备份或 Node.js 服务代码。检查模块路径、符号链接与脚本语法，记录源文件校验值。输出目录只允许替换带 AGY 构建标记的旧产物。
+构建器只复制允许的前端资源和纯 JavaScript 校验模块，不复制 SQLite、Cookie、环境文件、个人备份或 Node.js 服务代码。检查模块路径、符号链接与脚本语法，记录源文件校验值。输出目录只允许替换带 LaunchDeck 构建标记的旧产物。
 
-前端源文件保持原样。当前构建在**生成的文件**中启用 chrome-extension: 平台识别，并用统一 entry.js 启动本地消息桥；协议与 UI 适配记录见产物中的 `.agy-generated.json`。不要直接修改 dist，应修改来源后重新构建。
+前端源文件保持原样。当前构建在**生成的文件**中启用 chrome-extension: 平台识别，并用统一 entry.js 启动本地消息桥；协议与 UI 适配记录见产物中的 `.launchdeck-generated.json`。不要直接修改 dist，应修改来源后重新构建。
 
 ## 在 Chrome / Edge 加载
 
 1. Chrome 打开 `chrome://extensions/`；Edge 打开 `edge://extensions/`。
 2. 打开“开发者模式”，选择“加载已解压的扩展程序”。
-3. 选择 `backend/extension/dist/agy-new-tab/`，不要选其父目录或 ZIP 文件。
+3. 选择 `backend/extension/dist/launchdeck-new-tab/`，不要选其父目录或 ZIP 文件。
 4. 新建一个标签页，按浏览器提示确认使用此扩展提供的新标签页。
 
 扩展尚未自动安装，也未提交应用商店。加载操作会让此扩展接管新标签页，请在查看文件后自行确认。普通加载版更新时保持目录路径不变，在扩展管理页点“重新加载”，再刷新已打开的起始页。
+
+从旧命名目录升级时，请先导出备份，将新版 ZIP 的内容解压覆盖到**原已加载目录**，保留原目录路径，再点“重新加载”。不要先卸载扩展。直接从新的目录重新加载未打包扩展可能生成不同扩展 ID，从而成为独立的数据空间；需要换目录时应先导出、再导入备份。
 
 想让**启动浏览器时第一屏**也使用它，在浏览器设置的“启动时”选择“打开新标签页”。如果选择“继续上次会话”，浏览器仍会恢复旧标签；扩展不强行修改该选择。停用或移除扩展后，新标签页交还浏览器。Chrome 普通扩展不覆盖无痕新标签页。
 
@@ -70,7 +76,7 @@ npm run build:extension
 - 不增加站点抓取、第三方图标服务、远程 SVG 注入、<all_urls> 或 web_accessible_resources。原有 img-src self 已支持此扩展内部资源，无需放宽 CSP。
 - 仅将图标作为 img 加载；加载过程中保留首字，失败/超时回退，短期内避免反复失败重试。浏览器也可能成功返回通用占位图；本扩展不声称每个网址都一定能取得品牌图标。
 - 该能力只在安装后的扩展页生效，普通 localhost 网页没有扩展的 favicon 权限，仍按其现有渲染方式显示。
-- 当前包版本为 0.5.1，favicon 功能自 0.2.0 提供。在扩展管理页重新加载同一目录后，再打开/刷新新标签页；若从更早版本升级时浏览器要求确认 favicon 权限，需由用户完成。
+- 当前包版本为 0.6.0，favicon 功能自 0.2.0 提供。在扩展管理页重新加载同一目录后，再打开/刷新新标签页；若从更早版本升级时浏览器要求确认 favicon 权限，需由用户完成。
 
 原生接口参考：[Chrome favicon 官方说明](https://developer.chrome.com/docs/extensions/how-to/ui/favicons)。Edge 的具体显示与权限提示仍需在真实浏览器验证。
 
@@ -84,9 +90,9 @@ npm run build:extension
 npm run export:extension
 ```
 
-命令以只读方式打开数据库，生成 `backend/extension/dist/agy-web-backup-时间戳.json`，不修改原数据。随后在扩展设置内导入。不会导出其他设备的设置或 Cookie；设备设置以默认值开始。原网页版仅存在浏览器中的自定义导航页及未同步修改，需要由网页版导出入口另行迁移，当前 CLI 无法读取这些浏览器数据。
+命令以只读方式打开数据库，生成 `backend/extension/dist/launchdeck-web-backup-时间戳.json`，不修改原数据。随后在扩展设置内导入。不会导出其他设备的设置或 Cookie；设备设置以默认值开始。原网页版仅存在浏览器中的自定义导航页及未同步修改，需要由网页版导出入口另行迁移，当前 CLI 无法读取这些浏览器数据。
 
-备份是个人内容，单独保管，不要放进 `agy-new-tab/` 再打包发布。默认构建 ZIP 不包含旁边的 JSON 备份。
+备份是个人内容，单独保管，不要放进 `launchdeck-new-tab/` 再打包发布。默认构建 ZIP 不包含旁边的 JSON 备份。
 
 ## 本地 API 与源码分工
 
@@ -101,7 +107,7 @@ npm run export:extension
 
 扩展内部保持原有 `/api/state`、`/api/widgets/state`、`/api/device/settings`、`/api/widgets`、`/api/timezones`、`/api/time`、`/api/location/search`、`/api/environment/resolve`、`/api/weather` 的逻辑响应结构，但这些请求通过消息实现，没有监听端口。新增逻辑接口 `/api/extension/backup` GET、`/api/extension/import` POST 与 `/api/extension/browser-data` GET 仅在扩展内部提供。备份导入最大 2 MB，其余消息体最大 1 MB。
 
-0.2.0 另提供 `GET /api/icons/favicon?pageUrl=https%3A%2F%2Fexample.com%2F&size=64`，返回 `{ source: 'browser-favicon', pageUrl, imageUrl, size }`。size 允许 16/32/48/64/128，默认 64；未知/重复参数返回 400、未授权返回 403。imageUrl 是本扩展内部 URL，不是网站代理接口。页面也可直接使用 `window.AGYIcons.presetKey(site)`、`faviconUrl(url, size)`、`refresh()`；这三个入口在 app.js 启动前就绪。
+0.2.0 另提供 `GET /api/icons/favicon?pageUrl=https%3A%2F%2Fexample.com%2F&size=64`，返回 `{ source: 'browser-favicon', pageUrl, imageUrl, size }`。size 允许 16/32/48/64/128，默认 64；未知/重复参数返回 400、未授权返回 403。imageUrl 是本扩展内部 URL，不是网站代理接口。页面也可直接使用 `window.LaunchDeckIcons.presetKey(site)`、`faviconUrl(url, size)`、`refresh()`；这三个入口在 app.js 启动前就绪。
 
 发送者必须是当前扩展的本地页面；网页内容脚本、其他扩展及外部网站均不受信任。持久文档按浏览器配置文件共享，不沿用网页服务端 Cookie。校验逻辑与天气字段解析复用 backend/features 中的平台无关模块，禁止把 node:* 模块放进包中。
 

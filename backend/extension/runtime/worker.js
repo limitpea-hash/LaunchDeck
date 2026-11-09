@@ -1,4 +1,4 @@
-import { createExtensionApi, RPC_CHANNEL } from './api.js';
+import { createExtensionApi, RPC_CHANNEL, LEGACY_RPC_CHANNEL } from './api.js';
 import { createBrowserEnvironment } from './environment.js';
 
 const api = createExtensionApi({ storage: chrome.storage.local, extensionId: chrome.runtime.id,
@@ -6,7 +6,7 @@ const api = createExtensionApi({ storage: chrome.storage.local, extensionId: chr
 
 // Register synchronously so a suspended service worker can wake for the first request.
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
-  if (message?.channel !== RPC_CHANNEL) return false;
+  if (![RPC_CHANNEL, LEGACY_RPC_CHANNEL].includes(message?.channel)) return false;
   api(message, sender).then(respond, () => respond({ status: 503, headers: {}, body: { error: '本地数据服务暂时不可用，请重试' } }));
   return true;
 });

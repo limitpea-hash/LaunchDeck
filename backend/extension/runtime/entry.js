@@ -92,7 +92,7 @@ function installBackupTools(app) {
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       if (blob.size > 2 * 1024 * 1024) throw new Error('备份内容过大，请先减少不需要的数据');
       const url = URL.createObjectURL(blob);
-      const link = node('a'); link.href = url; link.download = `agy-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const link = node('a'); link.href = url; link.download = `launchdeck-backup-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.append(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
       status.textContent = '已生成备份文件。';
@@ -129,7 +129,7 @@ try {
   }
   installPermissionTools();
   const iconEnhancement = installFaviconEnhancement({ document, MutationObserver, extensionId: chrome.runtime.id, presets: iconPresets });
-  window.AGYIcons = Object.freeze({
+  window.LaunchDeckIcons = Object.freeze({
     presetKey: site => presetIconKey(site, iconPresets),
     faviconUrl: (url, size = 64) => browserFaviconUrl(url, { extensionId: chrome.runtime.id, size }),
     refresh: iconEnhancement.refresh,

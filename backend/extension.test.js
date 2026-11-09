@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile, writeFile, mkdir, cp, symlink, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createExtensionApi, RPC_CHANNEL } from './extension/runtime/api.js';
-import { STORE_KEY } from './extension/runtime/documents.js';
+import { createExtensionApi, RPC_CHANNEL, LEGACY_RPC_CHANNEL } from './extension/runtime/api.js';
+import { STORE_KEY, LEGACY_STORE_KEY } from './extension/runtime/documents.js';
 import { createBrowserEnvironment } from './extension/runtime/environment.js';
 import { installFetchBridge } from './extension/runtime/bridge.js';
 import { defaultWidgetState } from './features/widgets.js';
@@ -81,6 +81,41 @@ test('storage failure is visible and does not advance local revisions or clear s
   storage.values[STORE_KEY].schemaVersion = 99;
   assert.equal((await app.request('/api/state')).status, 503);
   assert.equal(storage.values[STORE_KEY].schemaVersion, 99);
+});
+
+test('LaunchDeck reads legacy storage without data loss and migration failures preserve the previous release', async () => {
+  const old = setup();
+  await old.request('/api/state', 'PATCH', portal, 0);
+  const previous = structuredClone(old.storage.values[STORE_KEY]);
+  const storage = memoryStorage();
+  storage.values[LEGACY_STORE_KEY] = structuredClone(previous);
+  const migrated = setup({ storage });
+  assert.deepEqual((await migrated.request('/api/state')).body.state, portal);
+  assert.equal(storage.values[STORE_KEY], undefined);
+  const save = storage.set;
+  storage.set = async () => { throw new Error('quota'); };
+  assert.equal((await migrated.request('/api/state', 'PATCH', { note: 'failed' }, 1)).status, 503);
+  assert.equal(storage.values[STORE_KEY], undefined);
+  assert.deepEqual(storage.values[LEGACY_STORE_KEY], previous);
+  storage.set = save;
+  assert.equal((await migrated.request('/api/state', 'PATCH', { note: 'migrated' }, 1)).status, 200);
+  assert.equal((await migrated.request('/api/state')).body.state.note, 'migrated');
+  assert.deepEqual(storage.values[LEGACY_STORE_KEY], previous);
+  assert.equal(storage.values[STORE_KEY].portal.revision, 2);
+  // A corrupt new document must never silently fall back to an older snapshot.
+  storage.values[STORE_KEY].schemaVersion = 99;
+  assert.equal((await migrated.request('/api/state')).status, 503);
+});
+
+test('newly branded exports accept old backup formats and old open tabs retain version conflict protection', async () => {
+  const app = setup();
+  await app.request('/api/state', 'PATCH', portal, 0);
+  const backup = (await app.request('/api/extension/backup')).body;
+  assert.equal(backup.format, 'launchdeck-new-tab');
+  assert.equal((await app.request('/api/extension/import', 'POST', { ...backup, format: 'agy-new-tab' })).status, 200);
+  const legacy = await app.api({ channel: LEGACY_RPC_CHANNEL, path: '/api/state', method: 'PATCH', body: { note: 'old tab' }, ifMatch: '"1"' }, SENDER);
+  assert.equal(legacy.status, 409);
+  assert.equal((await app.api({ channel: LEGACY_RPC_CHANNEL, path: '/api/state' }, { ...SENDER, id: 'other' })).status, 403);
 });
 
 test('extension message boundary rejects web pages, different IDs, arbitrary URLs, and unversioned writes', async () => {
@@ -179,6 +214,10 @@ test('build contains local modules and minimal permissions, applies package-only
   const built = await buildExtension({ outputRoot: directory, zip: false });
   const manifest = JSON.parse(await readFile(join(built.directory, 'manifest.json'), 'utf8'));
   assert.equal(manifest.manifest_version, 3);
+  assert.equal(manifest.name, 'LaunchDeck');
+  assert.equal(built.directory, join(directory, 'launchdeck-new-tab'));
+  const marker = JSON.parse(await readFile(join(built.directory, '.launchdeck-generated.json'), 'utf8'));
+  assert.equal(marker.generatedBy, 'LaunchDeck');
   assert.equal(manifest.chrome_url_overrides.newtab, 'index.html');
   assert.deepEqual(manifest.permissions, ['storage', 'favicon']);
   assert.equal(manifest.web_accessible_resources, undefined);
@@ -186,12 +225,20 @@ test('build contains local modules and minimal permissions, applies package-only
   assert.ok(manifest.optional_host_permissions.every(origin => origin.startsWith('https://') && !origin.includes('localhost')));
   assert.match(manifest.content_security_policy.extension_pages, /script-src 'self'/);
   assert.doesNotMatch(manifest.content_security_policy.extension_pages, /unsafe-eval/);
+  assert.match(manifest.content_security_policy.extension_pages, /img-src 'self' data: blob:;/);
+  assert.doesNotMatch(manifest.content_security_policy.extension_pages, /script-src[^;]*blob:/);
   const html = await readFile(join(built.directory, 'index.html'), 'utf8');
+  assert.match(html, /<title>新标签页<\/title>/);
   assert.match(html, /platform\/extension\/runtime\/entry.js/);
   assert.doesNotMatch(html, /<script[^>]+src="app.js"/);
   const adapted = await readFile(join(built.directory, 'lib/feature-client.js'), 'utf8');
   assert.match(adapted, /'chrome-extension:'/);
   assert.equal(await readFile(join(projectRoot, 'frontend/app.js'), 'utf8'), before);
+  const appSource = await readFile(join(built.directory, 'app.js'), 'utf8');
+  const entrySource = await readFile(join(built.directory, 'platform/extension/runtime/entry.js'), 'utf8');
+  assert.match(appSource, /window\.LaunchDeckIcons/);
+  assert.match(entrySource, /window\.LaunchDeckIcons/);
+  assert.doesNotMatch(appSource, /window\.AGYIcons/);
   assert.deepEqual((await readdir(built.directory)).filter(name => /sqlite|backup|\.env/.test(name)), []);
   await writeFile(join(directory, 'do-not-package-backup.json'), 'private');
   const second = await buildExtension({ outputRoot: directory, zip: false });
@@ -217,16 +264,16 @@ test('actual worker entry registers a listener synchronously and answers extensi
 test('build refuses symlinked inputs and never overwrites an unmarked user directory', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'agy-build-guards-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  await mkdir(join(directory, 'agy-new-tab'));
-  await writeFile(join(directory, 'agy-new-tab/important.txt'), 'keep');
+  await mkdir(join(directory, 'launchdeck-new-tab'));
+  await writeFile(join(directory, 'launchdeck-new-tab/important.txt'), 'keep');
   await assert.rejects(buildExtension({ outputRoot: directory, zip: false }), /构建标记/);
-  assert.equal(await readFile(join(directory, 'agy-new-tab/important.txt'), 'utf8'), 'keep');
+  assert.equal(await readFile(join(directory, 'launchdeck-new-tab/important.txt'), 'utf8'), 'keep');
   const source = join(directory, 'source');
   await mkdir(source);
   await cp(join(projectRoot, 'frontend'), join(source, 'frontend'), { recursive: true });
   await mkdir(join(source, 'backend/extension'), { recursive: true });
   await cp(join(projectRoot, 'backend/extension/manifest.json'), join(source, 'backend/extension/manifest.json'));
-  await symlink(join(directory, 'agy-new-tab/important.txt'), join(source, 'frontend/leak.js'));
+  await symlink(join(directory, 'launchdeck-new-tab/important.txt'), join(source, 'frontend/leak.js'));
   await assert.rejects(buildExtension({ sourceRoot: source, outputRoot: join(directory, 'other-output'), zip: false }), /符号链接/);
 });
 

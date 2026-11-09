@@ -34,6 +34,8 @@ test('serves the page, exposes health, and keeps internal files private', async 
   t.after(app.close);
   const page = await app.get('/');
   assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-security-policy'), /img-src 'self' data: blob: https:;/);
+  assert.doesNotMatch(page.headers.get('content-security-policy'), /script-src[^;]*blob:/);
   assert.match(await page.text(), /app.js/);
   assert.deepEqual(await (await app.get('/api/health')).json(), { status: 'ok', storage: 'sqlite' });
   for (const path of ['/backend/app.js', '/backend/data/portal.sqlite', '/server/app.js', '/data/portal.sqlite', '/package.json', '/.env', '/TASK.md', '/api/missing']) {
