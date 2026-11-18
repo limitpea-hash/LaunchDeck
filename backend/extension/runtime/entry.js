@@ -6,6 +6,7 @@ import { validateWidgetPatch } from '../../features/widgets.js';
 import { validateSettingsPatch } from '../../features/settings.js';
 import { installFaviconEnhancement, browserFaviconUrl, presetIconKey } from './favicons.js';
 import { iconPresets } from '../icon-presets.js';
+import { mergeNavigationSites } from '../../navigation/schema.js';
 
 installFetchBridge();
 
@@ -27,7 +28,7 @@ function hydrateBrowserData(data, portal) {
   if (!data) return;
   validateBrowserData(data);
   localStorage.setItem('ios18_nav_pages_v1', JSON.stringify(data.pages));
-  localStorage.setItem('ios18_nav_sites_v1', JSON.stringify([...(portal?.sites || []), ...data.customSites]));
+  localStorage.setItem('ios18_nav_sites_v1', JSON.stringify(mergeNavigationSites(portal?.sites || [], data.customSites, data.siteOrder)));
 }
 
 function installPermissionTools() {
@@ -87,7 +88,7 @@ function installBackupTools(app) {
       backup.portal = { sites: structuredClone(app.state.sites.filter(site => presets.has(site.category))), prefs: structuredClone(app.state.prefs), note: app.state.note };
       backup.widgets = structuredClone(app.state.widgetState);
       backup.device = structuredClone(app.state.deviceSettings);
-      backup.browserData = { pages: structuredClone(app.state.pages).map((page, order) => ({ ...page, order })), customSites: structuredClone(app.state.sites.filter(site => !presets.has(site.category))) };
+      backup.browserData = { pages: structuredClone(app.state.pages).map((page, order) => ({ ...page, order })), customSites: structuredClone(app.state.sites.filter(site => !presets.has(site.category))), siteOrder: app.state.sites.map(site => site.id) };
       validatePatch(backup.portal, true); validateWidgetPatch(backup.widgets); validateSettingsPatch(backup.device); validateBrowserData(backup.browserData);
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       if (blob.size > 2 * 1024 * 1024) throw new Error('备份内容过大，请先减少不需要的数据');

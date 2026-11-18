@@ -5,7 +5,7 @@ const SYSTEM_PAGES = ['all', 'ai', 'design', 'dev', 'media'];
 
 export function validateBrowserData(value) {
   if (value === null || value === undefined) return;
-  record(value, ['pages', 'customSites'], '浏览器页面备份');
+  record(value, ['pages', 'customSites', 'siteOrder'], '浏览器页面备份');
   check(Array.isArray(value.pages) && value.pages.length >= 5 && value.pages.length <= 50, '导航页数量不正确');
   check(Array.isArray(value.customSites) && value.customSites.length <= 1000, '自定义网站数量不正确');
   const ids = new Set();
@@ -29,5 +29,13 @@ export function validateBrowserData(value) {
     validatePatch({ sites: [{ ...site, category: 'ai' }] });
     check(!siteIds.has(site.id), '自定义网站 ID 重复');
     siteIds.add(site.id);
+  }
+  if (value.siteOrder !== undefined) {
+    check(Array.isArray(value.siteOrder) && value.siteOrder.length <= 2000, '网站顺序记录过多');
+    const ordered = new Set();
+    for (const id of value.siteOrder) {
+      check(typeof id === 'string' && /^[a-z0-9_-]{1,100}$/i.test(id) && !ordered.has(id), '网站顺序ID不正确或重复'); ordered.add(id);
+    }
+    check([...siteIds].every(id => ordered.has(id)), '网站顺序遗漏自定义网站');
   }
 }

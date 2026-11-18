@@ -123,3 +123,32 @@ test('opening the static HTML directly does not make backend requests', async ()
   await app.tick();
   assert.equal(app.storage.has(OUTBOX), false);
 });
+
+test('flushNow awaits an in-flight save and drains edits added during that save', async () => {
+  let finish; const patches = [];
+  const app = client(async (url, options) => {
+    if (!options.method) return reply({ revision: 1, state });
+    patches.push(JSON.parse(options.body));
+    if (patches.length === 1) return new Promise(resolve => { finish = () => resolve(reply({ revision: 2 })); });
+    return reply({ revision: 3 });
+  });
+  await app.api.load(); app.api.save({ note: 'before' });
+  const saving = app.tick(); await Promise.resolve();
+  app.api.save({ note: 'after', sites: [] });
+  let drained = false; const flush = app.api.flushNow().then(() => { drained = true; });
+  await Promise.resolve(); assert.equal(drained, false);
+  finish(); await Promise.all([saving, flush]);
+  assert.deepEqual(patches, [{ note: 'before' }, { note: 'after', sites: [] }]);
+  assert.equal(app.api.hasPending(), false);
+  assert.equal(app.storage.has(OUTBOX), false);
+});
+
+test('flushNow rejects offline writes and conflicts without deleting the persisted outbox', async () => {
+  for (const status of [503, 409]) {
+    const app = client(async (url, options) => !options.method ? reply({ revision: 1, state }) : reply({ error: 'failure' }, status));
+    await app.api.load(); app.api.save({ note: 'keep me' });
+    await assert.rejects(app.api.flushNow(), e => e.status === status);
+    assert.equal(JSON.parse(app.storage.get(OUTBOX)).patch.note, 'keep me');
+    assert.equal(app.api.hasPending(), true);
+  }
+});

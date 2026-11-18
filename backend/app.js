@@ -7,6 +7,11 @@ import { HttpError, validatePatch } from './validation.js';
 import { getAllowedHosts } from './network.js';
 import { createEnvironmentService } from './features/environment.js';
 import { createFeatureRoutes } from './features/routes.js';
+import { createNavigationRoutes } from './navigation/http.js';
+import { fileURLToPath } from 'node:url';
+
+const platformFiles = new Set(['validation.js', 'features/schema.js', 'features/widgets.js',
+  'navigation/schema.js', 'navigation/codec.js', 'navigation/merge.js']);
 
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -14,6 +19,9 @@ const assets = new Map([
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/backend-client.js', ['backend-client.js', 'text/javascript; charset=utf-8']],
+  ['/restore.html', ['restore.html', 'text/html; charset=utf-8']],
+  ['/restore.js', ['restore.js', 'text/javascript; charset=utf-8']],
+  ['/restore.css', ['restore.css', 'text/css; charset=utf-8']],
 ]);
 
 export function createApp({ root, databasePath, allowedHosts = getAllowedHosts, environmentService = createEnvironmentService() }) {
@@ -58,6 +66,7 @@ export function createApp({ root, databasePath, allowedHosts = getAllowedHosts, 
   }
 
   const handleFeature = createFeatureRoutes({ db, readBody, json, environment: environmentService });
+  const handleNavigation = createNavigationRoutes({ db, readBody, json });
 
   const server = createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -74,9 +83,11 @@ export function createApp({ root, databasePath, allowedHosts = getAllowedHosts, 
       } catch { throw new HttpError(400, '访问地址格式不正确'); }
       const hosts = typeof allowedHosts === 'function' ? allowedHosts() : allowedHosts;
       if (!hosts.includes(base.hostname)) throw new HttpError(403, '访问地址不在允许列表中');
-      if (req.headers['sec-fetch-site'] === 'cross-site') throw new HttpError(403, '不接受跨站请求');
-      if (req.headers.origin && req.headers.origin !== base.origin) throw new HttpError(403, '请求来源不正确');
       const url = new URL(req.url, base);
+      const documentNavigation = req.method === 'GET' && req.headers['sec-fetch-mode'] === 'navigate' &&
+        req.headers['sec-fetch-dest'] === 'document' && !url.pathname.startsWith('/api/');
+      if (req.headers['sec-fetch-site'] === 'cross-site' && !documentNavigation) throw new HttpError(403, '不接受跨站请求');
+      if (req.headers.origin && req.headers.origin !== base.origin) throw new HttpError(403, '请求来源不正确');
       const path = url.pathname;
       if (path === '/api/health' && req.method === 'GET') return json(res, 200, { status: 'ok', storage: 'sqlite' });
       if (path === '/api/state') {
@@ -108,6 +119,7 @@ export function createApp({ root, databasePath, allowedHosts = getAllowedHosts, 
         }
         return json(res, 200, value, { ETag: `"${value.revision}"` });
       }
+      if (await handleNavigation(req, res, url)) return;
       if (await handleFeature(req, res, url)) return;
       if (path.startsWith('/api/')) throw new HttpError(404, '接口不存在');
       if (!['GET', 'HEAD'].includes(req.method)) {
@@ -117,9 +129,11 @@ export function createApp({ root, databasePath, allowedHosts = getAllowedHosts, 
       if (path === '/favicon.ico') { res.writeHead(204); return res.end(); }
       const moduleAsset = /^\/(?:widgets|lib)\/[a-z0-9/_-]+\.(?:js|css)$/i.test(path)
         ? [path.slice(1), path.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8'] : null;
-      const asset = assets.get(path) || moduleAsset;
+      const platformAsset = path.startsWith('/platform/') && platformFiles.has(path.slice('/platform/'.length))
+        ? [path.slice('/platform/'.length), 'text/javascript; charset=utf-8'] : null;
+      const asset = platformAsset || assets.get(path) || moduleAsset;
       if (!asset) throw new HttpError(404, '页面不存在');
-      const frontendRoot = await realpath(typeof root === 'function' ? root() : root);
+      const frontendRoot = await realpath(platformAsset ? fileURLToPath(new URL('.', import.meta.url)) : (typeof root === 'function' ? root() : root));
       const assetPath = await realpath(resolve(frontendRoot, asset[0]));
       if (!assetPath.startsWith(`${frontendRoot}${sep}`)) throw new HttpError(404, '页面不存在');
       const content = await readFile(assetPath);

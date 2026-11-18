@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>LaunchDeck · Bitwarden 字段恢复验证</title><link rel="stylesheet" href="probe.css" /></head>
+<body><main><h1>Bitwarden 字段恢复验证</h1>
+<p>仅使用50个合成网站。备份压缩后分为隐藏自定义字段，由保险库加密保存；不访问真实导航、账户密钥或生产接口。</p>
+<section><h2>准备测试条目</h2><p id="sizes"></p>
+<button id="exportItem" disabled>下载单条测试登录文件</button>
+<p>导入到 Bitwarden 的条目名称为“LaunchDeck 合成备份 · 字段验证”。重复导入会新增条目，不会更新原条目。</p></section>
+<section><h2>选择条目并恢复</h2>
+<p>点击“恢复备份”会聚焦表单，检查 Bitwarden 是否弹出条目列表。若没有弹出，可点输入框旁的 Bitwarden 图标或扩展中的填充按钮。</p>
+<button id="restore" disabled>恢复备份</button><button id="clear" type="button">清空填充值</button>
+<form id="restoreForm" autocomplete="on">
+<label>备份条目<input id="username" name="username" autocomplete="username" /></label>
+<label>专用测试标记<input id="password" name="password" type="password" autocomplete="current-password" /></label>
+<div id="fields"></div><button type="submit">校验并预览恢复</button></form>
+<p id="status" role="status">尚未读取备份。</p><pre id="preview"></pre></section>
+<p>实验只预览合成数据，不写回 LaunchDeck。不提供网页直接打开扩展弹窗的接口。</p>
+</main><script type="module" src="probe.js"></script></body></html>

@@ -3,6 +3,8 @@ import { defaultWidgetState, validateWidgetPatch, validateWidgetDocument } from 
 import { defaultDeviceSettings, validateSettingsPatch } from '../../features/settings.js';
 import { record, check } from '../../features/schema.js';
 import { validateBrowserData } from './backup.js';
+import { validateNavigationImportRequest } from '../../navigation/schema.js';
+import { mergeNavigationBackup } from '../../navigation/merge.js';
 
 export const STORE_KEY = 'launchdeck_extension_documents_v1';
 export const LEGACY_STORE_KEY = 'agy_extension_documents_v1';
@@ -68,6 +70,27 @@ export function createLocalDocuments(storage, { now = Date.now } = {}) {
         return structuredClone(all[kind]);
       });
     },
+    async readNavigationBrowserData() {
+      await queue;
+      const all = await readAll();
+      return { restoreId: all.navigationRestoreId ?? null, data: all.browserData ?? null };
+    },
+    importNavigation(input) {
+      // Clone before queuing: callers cannot mutate a validated request while it waits.
+      const request = structuredClone(validateNavigationImportRequest(input));
+      return serialize(async () => {
+        const all = await readAll();
+        if (request.portalRevision !== all.portal.revision || request.widgetRevision !== all.widgets.revision) throw new HttpError(409, '其他页面已更新数据，请刷新并重新预览备份');
+        const merged = mergeNavigationBackup(request.backup, all.portal.state, all.widgets.state);
+        const time = new Date(now()).toISOString(), restoreId = crypto.randomUUID();
+        for (const kind of ['portal', 'widgets']) all[kind] = { revision: all[kind].revision + 1, state: merged[kind], updatedAt: time };
+        all.browserData = merged.browserData;
+        all.navigationRestoreId = restoreId;
+        await saveAll(all);
+        return { success: true, restoreId, browserData: structuredClone(merged.browserData),
+          revisions: { portal: all.portal.revision, widgets: all.widgets.revision } };
+      });
+    },
     async exportData() {
       await queue;
       const all = await readAll();
@@ -87,12 +110,19 @@ export function createLocalDocuments(storage, { now = Date.now } = {}) {
         if (input.browserData && input.portal) {
           const ids = new Set(input.portal.sites.map(site => site.id));
           check(input.browserData.customSites.every(site => !ids.has(site.id)), '预设网站与自定义网站 ID 重复');
+          if (input.browserData.siteOrder) {
+            const allIds = new Set([...ids, ...input.browserData.customSites.map(site => site.id)]);
+            check(input.browserData.siteOrder.length === allIds.size && input.browserData.siteOrder.every(id => allIds.has(id)), '网站顺序与备份网站不一致');
+          }
         }
         const all = await readAll();
         for (const [kind, state] of Object.entries({ portal: input.portal, widgets: input.widgets, device: input.device })) {
           all[kind] = { revision: all[kind].revision + 1, state: structuredClone(state), updatedAt: new Date(now()).toISOString() };
         }
-        if (input.browserData !== undefined) all.browserData = structuredClone(input.browserData);
+        if (input.browserData !== undefined) {
+          all.browserData = structuredClone(input.browserData);
+          all.navigationRestoreId = crypto.randomUUID();
+        }
         await saveAll(all);
         return { success: true };
       });

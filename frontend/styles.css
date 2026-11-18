@@ -564,6 +564,13 @@ body[data-wallpaper="titanium-dark"] .arch-bottom {
   color: rgba(255, 255, 255, 0.55);
 }
 
+.spotlight-input::-webkit-search-cancel-button,
+.spotlight-input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
 .spotlight-clear-btn,
 .spotlight-submit-btn {
   display: inline-flex;
@@ -2254,6 +2261,49 @@ body.jiggle-mode .ios-widget {
 
 .custom-wallpaper-status[data-status-tone="success"] {
   color: #30d158;
+}
+
+.navigation-backup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.navigation-backup-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.navigation-backup-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.navigation-backup-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.navigation-backup-status[hidden] {
+  display: none !important;
+}
+
+.navigation-backup-status[data-status-tone="error"] {
+  color: #ff6961;
+}
+
+.navigation-backup-status[data-status-tone="success"] {
+  color: #30d158;
+}
+
+body[data-navigation-importing="true"] .springboard-shell {
+  pointer-events: none;
 }
 
 /* Haptic Touch Context Menu & Modals */

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LaunchDeck · 分页通行密钥验证</title>
+  <link rel="stylesheet" href="probe.css" />
+</head>
+<body>
+<main>
+  <h1>分页通行密钥验证</h1>
+  <p>仅使用两个合成测试页面。不会读取、导入或覆盖你的 LaunchDeck 数据。</p>
+  <p>保存提示中必须选择 Bitwarden。系统钥匙串或安全密钥成功，不能证明 Bitwarden 成功。测试可能在保险库留下不含真实内容的测试凭据；不支持数据存储时会明确停止。</p>
+  <label><input id="providerReady" type="checkbox" /> 我已安装并解锁 Bitwarden，本次提示会选择 Bitwarden</label>
+  <p id="environment" role="status"></p>
+  <section id="pages" aria-label="分页测试"></section>
+  <section>
+    <h2>选择通行密钥导入测试</h2>
+    <p>可刷新或换设备后打开同一个 localhost 来源，选择测试通行密钥读取。读取后只展示合成数据。</p>
+    <button id="importPage" type="button" disabled>选择测试通行密钥并读取</button>
+    <p id="importStatus" role="status"></p>
+    <pre id="importPreview"></pre>
+  </section>
+  <p>本机写入和读回通过后，仍需要第二设备使用已同步的 Bitwarden 条目验证恢复，才算云端备份可用。</p>
+</main>
+<script type="module" src="probe.js"></script>
+</body>
+</html>

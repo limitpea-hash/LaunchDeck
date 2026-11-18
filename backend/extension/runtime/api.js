@@ -32,9 +32,19 @@ export function createExtensionApi({ storage, environment, extensionId, permissi
     check(url.origin === 'https://extension.invalid', '接口地址不正确');
     const method = request.method || 'GET';
     check(['GET', 'POST', 'PATCH'].includes(method), '请求方法不支持');
-    if (request.body !== undefined && new TextEncoder().encode(JSON.stringify(request.body)).byteLength > (url.pathname === '/api/extension/import' ? 2 : 1) * 1024 * 1024) throw new HttpError(413, '请求体过大');
+    if (request.body !== undefined && new TextEncoder().encode(JSON.stringify(request.body)).byteLength > (['/api/extension/import', '/api/navigation/import'].includes(url.pathname) ? 2 : 1) * 1024 * 1024) throw new HttpError(413, '请求体过大');
     const body = request.body;
     const path = url.pathname;
+    if (path === '/api/navigation/browser-data') {
+      query(url, []);
+      if (method !== 'GET') throw new HttpError(405, '请求方法不支持');
+      return { body: await documents.readNavigationBrowserData() };
+    }
+    if (path === '/api/navigation/import') {
+      query(url, []);
+      if (method !== 'POST') throw new HttpError(405, '请求方法不支持');
+      return { body: await documents.importNavigation(body) };
+    }
     if (path === '/api/icons/favicon') {
       query(url, ['pageUrl', 'size']);
       if (method !== 'GET') throw new HttpError(405, '请求方法不支持');

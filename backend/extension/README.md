@@ -78,7 +78,7 @@ npm run build:extension
 - 不增加站点抓取、第三方图标服务、远程 SVG 注入、<all_urls> 或 web_accessible_resources。原有 img-src self 已支持此扩展内部资源，无需放宽 CSP。
 - 仅将图标作为 img 加载；加载过程中保留首字，失败/超时回退，短期内避免反复失败重试。浏览器也可能成功返回通用占位图；本扩展不声称每个网址都一定能取得品牌图标。
 - 该能力只在安装后的扩展页生效，普通 localhost 网页没有扩展的 favicon 权限，仍按其现有渲染方式显示。
-- 当前包版本为 0.7.0，favicon 功能自 0.2.0 提供。在扩展管理页重新加载同一目录后，再打开/刷新新标签页；若从更早版本升级时浏览器要求确认 favicon 权限，需由用户完成。
+- 当前包版本为 0.8.0，favicon 功能自 0.2.0 提供。在扩展管理页重新加载同一目录后，再打开/刷新新标签页；若从更早版本升级时浏览器要求确认 favicon 权限，需由用户完成。
 
 原生接口参考：[Chrome favicon 官方说明](https://developer.chrome.com/docs/extensions/how-to/ui/favicons)。Edge 的具体显示与权限提示仍需在真实浏览器验证。
 
@@ -90,7 +90,19 @@ npm run build:extension
 
 规范化后的图片以 Blob 保存在当前来源的 IndexedDB，不发送给后端或其他网站，不写入导航设置、扩展文档或任何 JSON 备份。浏览器配置文件、网页版与扩展之间各自独立，换设备需重新选图；清除站点数据或卸载扩展可能移除本机图片。默认发布 ZIP 不包含用户选取的壁纸。
 
-## 备份与迁移
+## 导航备份与 Bitwarden（0.8.0）
+
+设置 → 数据同步提供导航 JSON、Bitwarden 专用单条登录 JSON 和独立恢复入口。导航格式 `launchdeck-navigation/version=1` 仅备份网站、页面、文件夹、排列、Dock 标记及组件 ID/类型/位置，不导出便签、待办、组件配置、壁纸或设备位置/时间信息。恢复前校验并预览，明确确认后一次写入网站、桌面及页面记录，保留当前本机其他内容；两份文档的版本任一冲突都会取消恢复。
+
+Bitwarden JSON 需用户在保险库选择 Bitwarden JSON 格式手动导入。它是明文文件，导入后由保险库加密，不包含 Bitwarden 密码或 API 凭据。重复导入会创建新条目，不是覆盖或自动同步。压缩数据使用最多16个3000 ASCII字符的隐藏自定义字段，并校验长度、SHA256及解压上限；超过分段容量请使用导航 JSON。此校验用于完整性检测，不是对恶意文件的身份认证。
+
+网页版在同源独立 `restore.html` 上提供自定义字段自动填充，需用户选择备份条目。扩展协议页不支持该填充，因此扩展内置恢复页使用粘贴文本或导入文件；没有额外 HTTPS 托管、常驻备份服务，也不会向其他扩展发送私有消息。可粘贴专用条目备注中的 `LDNAV1:` 文本，或导入先前导出的单条文件；较大的条目备注不容纳全部内容时，应保留导航 JSON 或专用单条文件。不要导入整个保险库导出文件。此版本不承诺按钮自动打开 Bitwarden 选择器，亦未验证所有自托管版本及跨设备同步。
+
+首页仅在恢复标识变化时接收共享的自定义页与网站，避免刷新覆盖之后的本机编辑。所有普通窗口编辑仍沿用原有保存方式；导入时请先关闭其他正在编辑的标签页，冲突需重新预览。恢复窗口10分钟过期，只向打开它的同源窗口传送一次确认请求；直接打开恢复页可验证并下载导航 JSON。
+
+Bitwarden 压缩导出及分段校验需要 HTTPS 或 localhost 的安全环境。普通 HTTP 局域网页面可使用导航 JSON 导出及恢复；独立扩展本身属于安全环境。
+
+## 完整备份与迁移
 
 扩展设置 → 数据同步中新增“导出备份”和“导入并替换”。导出 JSON 包含当前导航、便签、待办、组件、设置以及自定义导航页；导入需确认替换，整份数据先验证再写入，失败不覆盖原数据。
 
@@ -115,7 +127,7 @@ npm run export:extension
 - `runtime/favicons.js`：预设匹配、扩展 favicon URL 校验、临时渲染适配和失败回退；不抓取网站 HTML。
 - `build.js`：构建与 ZIP；`export-data.js`：原网页版数据库的只读迁移。
 
-扩展内部保持原有 `/api/state`、`/api/widgets/state`、`/api/device/settings`、`/api/widgets`、`/api/timezones`、`/api/time`、`/api/location/search`、`/api/environment/resolve`、`/api/weather` 的逻辑响应结构，但这些请求通过消息实现，没有监听端口。新增逻辑接口 `/api/extension/backup` GET、`/api/extension/import` POST 与 `/api/extension/browser-data` GET 仅在扩展内部提供。备份导入最大 2 MB，其余消息体最大 1 MB。
+扩展内部保持原有 `/api/state`、`/api/widgets/state`、`/api/device/settings`、`/api/widgets`、`/api/timezones`、`/api/time`、`/api/location/search`、`/api/environment/resolve`、`/api/weather` 的逻辑响应结构，但这些请求通过消息实现，没有监听端口。新增逻辑接口 `/api/extension/backup` GET、`/api/extension/import` POST 与 `/api/extension/browser-data` GET 仅在扩展内部提供。完整备份及导航导入最大 2 MiB，其余消息体最大 1 MiB。导航接口见下方。
 
 0.2.0 另提供 `GET /api/icons/favicon?pageUrl=https%3A%2F%2Fexample.com%2F&size=64`，返回 `{ source: 'browser-favicon', pageUrl, imageUrl, size }`。size 允许 16/32/48/64/128，默认 64；未知/重复参数返回 400、未授权返回 403。imageUrl 是本扩展内部 URL，不是网站代理接口。页面也可直接使用 `window.LaunchDeckIcons.presetKey(site)`、`faviconUrl(url, size)`、`refresh()`；这三个入口在 app.js 启动前就绪。
 

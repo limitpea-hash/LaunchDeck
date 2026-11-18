@@ -117,6 +117,7 @@ export function createFeatureClient({
   let widgetState = normalizeWidgetState(readJsonStorage(storage, WIDGET_CACHE_KEY));
   let widgetTimer = null;
   let widgetSaving = false;
+  let widgetInflightPromise = null;
   let widgetConflictServerDoc = null;
 
   let deviceRevision = 0;
@@ -298,78 +299,197 @@ export function createFeatureClient({
     }, delay);
   }
 
-  async function flushWidgetsOutbox() {
+  async function flushWidgetsOutbox({ throwOnError = false } = {}) {
+    if (widgetInflightPromise) {
+      if (throwOnError) {
+        await widgetInflightPromise;
+      } else {
+        return widgetInflightPromise;
+      }
+    }
+
     const currentOutbox = readJsonStorage(storage, WIDGET_OUTBOX_KEY);
-    if (!isHttp || widgetSaving || !currentOutbox?.patch || currentOutbox.blocked) return;
+    if (!isHttp) {
+      if (throwOnError) {
+        const err = new Error('当前为离线或本地文件预览模式，未连接服务器');
+        err.status = 0;
+        throw err;
+      }
+      return;
+    }
+    if (currentOutbox?.blocked) {
+      if (throwOnError) {
+        const err = new Error('小组件或待办数据存在未解决的版本冲突，请先处理冲突');
+        err.status = 409;
+        throw err;
+      }
+      return;
+    }
+    if (widgetSaving || !currentOutbox?.patch || Object.keys(currentOutbox.patch).length === 0) {
+      return;
+    }
 
     widgetSaving = true;
     const sentPatch = currentOutbox.patch;
-    try {
-      const targetRev = currentOutbox.revision ?? widgetRevision;
-      const saved = await requestJson('/api/widgets/state', {
-        method: 'PATCH',
-        body: sentPatch,
-        ifMatch: targetRev,
-      });
-      widgetRevision = saved.revision;
-      writeJsonStorage(storage, WIDGET_REV_KEY, widgetRevision);
-
-      if (saved.state) {
-        const prevDesktop = widgetState?.desktop || null;
-        widgetState = normalizeWidgetState({
-          ...saved.state,
-          desktop: saved.state.desktop ?? prevDesktop,
+    let capturedError = null;
+    widgetInflightPromise = (async () => {
+      try {
+        const targetRev = currentOutbox.revision ?? widgetRevision;
+        const saved = await requestJson('/api/widgets/state', {
+          method: 'PATCH',
+          body: sentPatch,
+          ifMatch: targetRev,
         });
-      }
+        widgetRevision = saved.revision;
+        writeJsonStorage(storage, WIDGET_REV_KEY, widgetRevision);
 
-      const latestOutbox = readJsonStorage(storage, WIDGET_OUTBOX_KEY);
-      const remaining = {};
-      for (const [k, v] of Object.entries(latestOutbox?.patch || {})) {
-        if (JSON.stringify(v) !== JSON.stringify(sentPatch[k])) {
-          remaining[k] = v;
+        if (saved.state) {
+          const prevDesktop = widgetState?.desktop || null;
+          widgetState = normalizeWidgetState({
+            ...saved.state,
+            desktop: saved.state.desktop ?? prevDesktop,
+          });
         }
-      }
 
-      if (Object.keys(remaining).length > 0) {
-        writeJsonStorage(storage, WIDGET_OUTBOX_KEY, { revision: widgetRevision, patch: remaining });
-        widgetState = normalizeWidgetState({ ...widgetState, ...remaining });
-        scheduleWidgetsFlush(300);
-      } else {
-        writeJsonStorage(storage, WIDGET_OUTBOX_KEY, null);
-        emitStatus('widgets', 'synced', '小组件与待办已同步');
-      }
-      writeJsonStorage(storage, WIDGET_CACHE_KEY, widgetState);
-    } catch (error) {
-      if (error.status === 409) {
-        try {
-          widgetConflictServerDoc = await requestJson('/api/widgets/state');
-          widgetRevision = widgetConflictServerDoc.revision;
-          writeJsonStorage(storage, WIDGET_REV_KEY, widgetRevision);
-        } catch {
-          // Keep existing revision if re-read fails
+        const latestOutbox = readJsonStorage(storage, WIDGET_OUTBOX_KEY);
+        const remaining = {};
+        for (const [k, v] of Object.entries(latestOutbox?.patch || {})) {
+          if (JSON.stringify(v) !== JSON.stringify(sentPatch[k])) {
+            remaining[k] = v;
+          }
         }
-        const latest = readJsonStorage(storage, WIDGET_OUTBOX_KEY) || currentOutbox;
-        writeJsonStorage(storage, WIDGET_OUTBOX_KEY, { ...latest, blocked: true });
-        emitStatus('widgets', 'conflict', '小组件或待办在其他页面已更新，请选择保留版本', error);
-        emitConflict({
-          channel: 'widgets',
-          title: '小组件与待办数据版本冲突',
-          message: '其他页面已修改小组件配置或待办列表，请选择保留本机修改或载入服务器最新数据。',
-        });
-      } else if (error.status === 429) {
-        const waitMs = (error.retryAfterSeconds || 5) * 1000;
-        emitStatus('widgets', 'error', `请求较频繁，将在 ${Math.ceil(waitMs / 1000)} 秒后重试`, error);
-        scheduleWidgetsFlush(waitMs);
-      } else if (error.status >= 400 && error.status < 500) {
-        writeJsonStorage(storage, WIDGET_OUTBOX_KEY, null);
-        emitStatus('widgets', 'error', error.message || '小组件数据格式未通过校验', error);
-      } else {
-        emitStatus('widgets', 'error', '网络或服务暂不可用，修改已保存在本机，可稍后重试', error);
-        scheduleWidgetsFlush(5000);
+
+        if (Object.keys(remaining).length > 0) {
+          writeJsonStorage(storage, WIDGET_OUTBOX_KEY, { revision: widgetRevision, patch: remaining });
+          widgetState = normalizeWidgetState({ ...widgetState, ...remaining });
+          if (!throwOnError) scheduleWidgetsFlush(300);
+        } else {
+          writeJsonStorage(storage, WIDGET_OUTBOX_KEY, null);
+          emitStatus('widgets', 'synced', '小组件与待办已同步');
+        }
+        writeJsonStorage(storage, WIDGET_CACHE_KEY, widgetState);
+      } catch (error) {
+        capturedError = error;
+        if (error.status === 409) {
+          try {
+            widgetConflictServerDoc = await requestJson('/api/widgets/state');
+            widgetRevision = widgetConflictServerDoc.revision;
+            writeJsonStorage(storage, WIDGET_REV_KEY, widgetRevision);
+          } catch {
+            // Keep existing revision if re-read fails
+          }
+          const latest = readJsonStorage(storage, WIDGET_OUTBOX_KEY) || currentOutbox;
+          writeJsonStorage(storage, WIDGET_OUTBOX_KEY, { ...latest, blocked: true });
+          emitStatus('widgets', 'conflict', '小组件或待办在其他页面已更新，请选择保留版本', error);
+          emitConflict({
+            channel: 'widgets',
+            title: '小组件与待办数据版本冲突',
+            message: '其他页面已修改小组件配置或待办列表，请选择保留本机修改或载入服务器最新数据。',
+          });
+        } else if (error.status === 429) {
+          const waitMs = (error.retryAfterSeconds || 5) * 1000;
+          emitStatus('widgets', 'error', `请求较频繁，将在 ${Math.ceil(waitMs / 1000)} 秒后重试`, error);
+          if (!throwOnError) scheduleWidgetsFlush(waitMs);
+        } else if (error.status >= 400 && error.status < 500) {
+          emitStatus('widgets', 'error', error.message || '小组件数据格式未通过校验', error);
+        } else {
+          emitStatus('widgets', 'error', '网络或服务暂不可用，修改已保存在本机，可稍后重试', error);
+          if (!throwOnError) scheduleWidgetsFlush(5000);
+        }
+      } finally {
+        widgetSaving = false;
+        widgetInflightPromise = null;
       }
-    } finally {
-      widgetSaving = false;
+    })();
+
+    await widgetInflightPromise;
+    if (throwOnError && capturedError) {
+      throw capturedError;
     }
+  }
+
+  async function flushWidgetsNow() {
+    if (!isHttp) {
+      const err = new Error('当前为离线或本地文件预览模式，未连接服务器');
+      err.status = 0;
+      throw err;
+    }
+    if (widgetTimer) {
+      clearTimeout(widgetTimer);
+      widgetTimer = null;
+    }
+    if (widgetInflightPromise) {
+      await widgetInflightPromise;
+    }
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (widgetTimer) {
+        clearTimeout(widgetTimer);
+        widgetTimer = null;
+      }
+      if (widgetInflightPromise) {
+        await widgetInflightPromise;
+      }
+      const currentOutbox = readJsonStorage(storage, WIDGET_OUTBOX_KEY);
+      if (currentOutbox?.blocked) {
+        const err = new Error('小组件或待办数据存在未解决的版本冲突，请先处理冲突后再操作');
+        err.status = 409;
+        throw err;
+      }
+      if (!currentOutbox?.patch || Object.keys(currentOutbox.patch).length === 0) {
+        break;
+      }
+      await flushWidgetsOutbox({ throwOnError: true });
+    }
+
+    if (widgetInflightPromise) {
+      await widgetInflightPromise;
+    }
+    const remainingOutbox = readJsonStorage(storage, WIDGET_OUTBOX_KEY);
+    if (
+      remainingOutbox?.blocked ||
+      (remainingOutbox?.patch && Object.keys(remainingOutbox.patch).length > 0)
+    ) {
+      const err = new Error('小组件与待办未同步修改尚未排空，已中止操作以保护本机数据');
+      err.status = remainingOutbox?.blocked ? 409 : 503;
+      throw err;
+    }
+    return { revision: widgetRevision };
+  }
+
+  function clearDrainedWidgetsCache({ nextRevision = null } = {}) {
+    if (widgetTimer) {
+      clearTimeout(widgetTimer);
+      widgetTimer = null;
+    }
+    widgetRevision = Number.isInteger(nextRevision) ? nextRevision : 0;
+    writeJsonStorage(storage, WIDGET_OUTBOX_KEY, null);
+    writeJsonStorage(storage, WIDGET_CACHE_KEY, null);
+    writeJsonStorage(storage, WIDGET_REV_KEY, Number.isInteger(nextRevision) ? nextRevision : null);
+  }
+
+  async function fetchPortalState() {
+    return requestJson('/api/state');
+  }
+
+  async function fetchWidgetsStateDoc() {
+    return requestJson('/api/widgets/state');
+  }
+
+  async function loadNavigationBrowserData() {
+    return requestJson('/api/navigation/browser-data');
+  }
+
+  async function importNavigationBackup({ backup, portalRevision, widgetRevision: targetWidgetRev }) {
+    return requestJson('/api/navigation/import', {
+      method: 'POST',
+      body: {
+        backup,
+        portalRevision,
+        widgetRevision: targetWidgetRev,
+      },
+      timeoutMs: 15000,
+    });
   }
 
   async function resolveWidgetsConflict(choice, onServerStateApplied) {
@@ -648,6 +768,13 @@ export function createFeatureClient({
     loadWidgetsState,
     saveWidgetsState,
     flushWidgetsOutbox,
+    flushWidgetsNow,
+    clearDrainedWidgetsCache,
+    fetchPortalState,
+    fetchWidgetsStateDoc,
+    loadNavigationBrowserData,
+    importNavigationBackup,
+    getWidgetsRevision: () => widgetRevision,
     resolveWidgetsConflict,
     getWidgetsStateSnapshot: () => structuredClone(widgetState),
     loadDeviceSettings,

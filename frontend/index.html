@@ -125,11 +125,12 @@
           </button>
 
           <input
-            type="text"
+            type="search"
             id="spotlightInput"
             class="spotlight-input"
             placeholder="Spotlight 搜索全网或筛选应用… (⌘K)"
             autocomplete="off"
+            data-bwignore="true"
             spellcheck="false"
           />
 
@@ -607,6 +608,21 @@
           <div class="settings-row-between">
             <span class="settings-sub-text">当网络恢复或需要手动刷新时，可点击右侧按钮重新同步。</span>
             <button type="button" class="ui-btn ui-btn-primary" id="retryAllSyncBtn">立即同步并刷新</button>
+          </div>
+
+          <div class="settings-sub-box navigation-backup-card" id="navigationBackupCard">
+            <div class="navigation-backup-header">
+              <h4 class="navigation-backup-title">导航备份与 Bitwarden</h4>
+              <p class="settings-help-text" id="navigationBackupScopeHint">
+                导航备份仅包含网站、页面、文件夹、桌面排列、Dock 固定与小组件位置标识；不带便签正文、待办事项、小组件正文/配置、自定义壁纸及位置/时间/天气设置。
+              </p>
+            </div>
+            <div class="navigation-backup-actions">
+              <button type="button" class="ui-btn ui-btn-sm" id="exportNavJsonBtn">导出导航 JSON</button>
+              <button type="button" class="ui-btn ui-btn-sm" id="exportBitwardenJsonBtn">导出 Bitwarden 专用登录 JSON</button>
+              <button type="button" class="ui-btn ui-btn-primary ui-btn-sm" id="openNavigationRestoreBtn">打开独立恢复页</button>
+            </div>
+            <p class="settings-help-text navigation-backup-status" id="navigationBackupStatusText" role="status" aria-live="polite" hidden></p>
           </div>
         </section>
       </div>

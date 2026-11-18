@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>LaunchDeck · 导航备份恢复与校验</title>
+  <link rel="stylesheet" href="restore.css" />
+</head>
+<body>
+  <main class="restore-shell">
+    <header class="restore-header">
+      <div class="restore-title-wrap">
+        <span class="restore-badge">安全恢复中心</span>
+        <h1>导航备份恢复与校验</h1>
+      </div>
+      <p class="restore-scope-note" id="restoreScopeNote">
+        仅恢复网站、分类/页面、文件夹、桌面排列、Dock 固定与小组件位置标识；不会修改便签正文、待办事项、小组件配置、自定义壁纸或位置/时钟设置。
+      </p>
+      <p class="restore-session-banner" id="restoreSessionBanner" role="status"></p>
+    </header>
+
+    <section class="restore-card restore-extension-notice" id="extensionModeNotice" hidden>
+      <h2>浏览器扩展模式恢复说明</h2>
+      <p>
+        当前页面运行在浏览器扩展协议下，密码管理器扩展出于安全限制不支持在此协议页面直接自动填充表单。请在下方粘贴备份文本（<code>LDNAV1:...</code>）、导航 JSON，或选择导出的 JSON / 文本文件完成校验与恢复。
+      </p>
+    </section>
+
+    <section class="restore-card" id="bitwardenAutofillSection">
+      <div class="restore-card-head">
+        <div>
+          <h2>方式一：Bitwarden 专用登录条目自动填充（网页模式）</h2>
+          <p class="restore-card-sub">
+            点击「聚焦账号框」后，在 Bitwarden 扩展中选择已导入的 LaunchDeck 专用登录条目执行填充，随后点击「校验并预览自动填充备份」。
+          </p>
+        </div>
+        <div class="restore-inline-actions">
+          <button type="button" class="restore-btn" id="focusAutofillUsernameBtn">聚焦账号框</button>
+          <button type="button" class="restore-btn" id="clearAutofillFormBtn">清空填充字段</button>
+        </div>
+      </div>
+
+      <form id="bitwardenAutofillForm" class="autofill-form" autocomplete="on" novalidate>
+        <div class="autofill-primary-grid">
+          <label class="field-item" for="username">
+            <span class="field-label">备份条目账号 (username)</span>
+            <input type="text" id="username" name="username" autocomplete="username" spellcheck="false" />
+          </label>
+          <label class="field-item" for="password">
+            <span class="field-label">专用校验标记 (password)</span>
+            <input type="password" id="password" name="password" autocomplete="current-password" spellcheck="false" />
+          </label>
+          <label class="field-item field-item-wide" for="launchdeck_nav_manifest">
+            <span class="field-label">备份清单字段 (launchdeck_nav_manifest)</span>
+            <input type="password" id="launchdeck_nav_manifest" name="launchdeck_nav_manifest" autocomplete="off" spellcheck="false" />
+          </label>
+        </div>
+
+        <div class="autofill-chunks-header">
+          <span>隐藏自定义分段字段（按清单声明段数读取 1–16 段，自动忽略多余尾段）</span>
+        </div>
+
+        <div class="autofill-chunks-grid" id="autofillChunksGrid">
+          <label class="field-item" for="launchdeck_nav_chunk_0">
+            <span class="field-label">分段 1 (chunk_0)</span>
+            <input type="password" id="launchdeck_nav_chunk_0" name="launchdeck_nav_chunk_0" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_1">
+            <span class="field-label">分段 2 (chunk_1)</span>
+            <input type="password" id="launchdeck_nav_chunk_1" name="launchdeck_nav_chunk_1" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_2">
+            <span class="field-label">分段 3 (chunk_2)</span>
+            <input type="password" id="launchdeck_nav_chunk_2" name="launchdeck_nav_chunk_2" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_3">
+            <span class="field-label">分段 4 (chunk_3)</span>
+            <input type="password" id="launchdeck_nav_chunk_3" name="launchdeck_nav_chunk_3" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_4">
+            <span class="field-label">分段 5 (chunk_4)</span>
+            <input type="password" id="launchdeck_nav_chunk_4" name="launchdeck_nav_chunk_4" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_5">
+            <span class="field-label">分段 6 (chunk_5)</span>
+            <input type="password" id="launchdeck_nav_chunk_5" name="launchdeck_nav_chunk_5" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_6">
+            <span class="field-label">分段 7 (chunk_6)</span>
+            <input type="password" id="launchdeck_nav_chunk_6" name="launchdeck_nav_chunk_6" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_7">
+            <span class="field-label">分段 8 (chunk_7)</span>
+            <input type="password" id="launchdeck_nav_chunk_7" name="launchdeck_nav_chunk_7" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_8">
+            <span class="field-label">分段 9 (chunk_8)</span>
+            <input type="password" id="launchdeck_nav_chunk_8" name="launchdeck_nav_chunk_8" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_9">
+            <span class="field-label">分段 10 (chunk_9)</span>
+            <input type="password" id="launchdeck_nav_chunk_9" name="launchdeck_nav_chunk_9" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_10">
+            <span class="field-label">分段 11 (chunk_10)</span>
+            <input type="password" id="launchdeck_nav_chunk_10" name="launchdeck_nav_chunk_10" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_11">
+            <span class="field-label">分段 12 (chunk_11)</span>
+            <input type="password" id="launchdeck_nav_chunk_11" name="launchdeck_nav_chunk_11" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_12">
+            <span class="field-label">分段 13 (chunk_12)</span>
+            <input type="password" id="launchdeck_nav_chunk_12" name="launchdeck_nav_chunk_12" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_13">
+            <span class="field-label">分段 14 (chunk_13)</span>
+            <input type="password" id="launchdeck_nav_chunk_13" name="launchdeck_nav_chunk_13" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_14">
+            <span class="field-label">分段 15 (chunk_14)</span>
+            <input type="password" id="launchdeck_nav_chunk_14" name="launchdeck_nav_chunk_14" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field-item" for="launchdeck_nav_chunk_15">
+            <span class="field-label">分段 16 (chunk_15)</span>
+            <input type="password" id="launchdeck_nav_chunk_15" name="launchdeck_nav_chunk_15" autocomplete="off" spellcheck="false" />
+          </label>
+        </div>
+
+        <div class="restore-form-footer">
+          <button type="submit" class="restore-btn restore-btn-primary" id="verifyAutofillBtn">校验并预览自动填充备份</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="restore-card" id="manualRestoreSection">
+      <div class="restore-card-head">
+        <div>
+          <h2>方式二：粘贴备份文本或选择本地文件（≤ 2 MiB）</h2>
+          <p class="restore-card-sub">
+            支持 LaunchDeck 导航 JSON、<code>LDNAV1:</code> 备份文本，或由 LaunchDeck 导出的单条 Bitwarden 专用登录 JSON（拒绝完整密码库导出）。
+          </p>
+        </div>
+        <div class="restore-inline-actions">
+          <input type="file" id="restoreBackupFileInput" accept=".json,.txt,application/json,text/plain" hidden />
+          <button type="button" class="restore-btn" id="selectRestoreFileBtn">选择本地文件</button>
+          <button type="button" class="restore-btn" id="clearManualInputBtn">清空输入</button>
+        </div>
+      </div>
+
+      <label class="field-item" for="restoreBackupTextInput">
+        <span class="field-label">备份文本或 JSON 内容</span>
+        <textarea
+          id="restoreBackupTextInput"
+          rows="5"
+          spellcheck="false"
+          autocomplete="off"
+          placeholder="在此粘贴 LDNAV1:... 备份文本、导航 JSON 或单条专用登录 JSON…"
+        ></textarea>
+      </label>
+
+      <div class="restore-form-footer">
+        <button type="button" class="restore-btn restore-btn-primary" id="verifyManualBackupBtn">校验并预览文本/文件备份</button>
+      </div>
+    </section>
+
+    <p class="restore-status" id="restoreStatusText" role="status" aria-live="polite" hidden></p>
+
+    <section class="restore-card restore-preview-card" id="restorePreviewSection" hidden>
+      <div class="restore-card-head">
+        <div>
+          <h2>备份预览与恢复确认</h2>
+          <p class="restore-card-sub" id="previewBackupMeta"></p>
+        </div>
+      </div>
+
+      <div class="preview-metrics-grid">
+        <div class="metric-box">
+          <span class="metric-value" id="previewSitesCount">0</span>
+          <span class="metric-label">网站数量</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-value" id="previewPagesCount">0</span>
+          <span class="metric-label">导航页面</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-value" id="previewFoldersCount">0</span>
+          <span class="metric-label">文件夹</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-value" id="previewWidgetsCount">0</span>
+          <span class="metric-label">小组件位置</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-value" id="previewPinnedCount">0</span>
+          <span class="metric-label">Dock 固定</span>
+        </div>
+      </div>
+
+      <div class="preview-pages-list" id="previewPagesList"></div>
+
+      <div class="restore-confirm-bar">
+        <button type="button" class="restore-btn restore-btn-primary" id="confirmApplyRestoreBtn" disabled>
+          确认应用到当前桌面
+        </button>
+        <button type="button" class="restore-btn" id="downloadValidatedJsonBtn" disabled>
+          下载已验证的导航 JSON
+        </button>
+        <button type="button" class="restore-btn restore-btn-danger" id="cancelRestoreBtn">
+          取消并关闭
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="restore.js"></script>
+</body>
+</html>

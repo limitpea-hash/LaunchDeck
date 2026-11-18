@@ -263,3 +263,19 @@ PATCH 支持 `location`、`clock`、`weather`，至少一项，每项为完整�
 - 天气：[Open-Meteo 官方接口文档](https://open-meteo.com/en/docs)。城市搜索：[Geocoding API](https://open-meteo.com/en/docs/geocoding-api)。IP：[ipapi.co API](https://ipapi.co/api/)。浏览器定位：[MDN Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API)。
 - 外部服务需要这台 Mac 能连接上述 HTTPS 域名；免费服务的额度、网络可达性与定位精度不由本项目保证，失败须走上述显式降级。
 - 此版本供受信任局域网个人测试，现有导航及共享组件数据不按账号鉴权。设备 Cookie 隔离不等于账号权限系统。公开部署前必须另行设计认证、TLS 与可信代理配置。
+
+
+## 导航专用备份（0.8.0）
+
+HTTP与扩展消息桥提供相同接口，不需要额外备份服务：
+
+- `GET /api/navigation/browser-data` → `{restoreId:null|string,data:null|{pages,customSites,siteOrder}}`。仅在恢复标识变化时更新本机缓存，普通刷新不能重复覆盖后续本机编辑。
+- `POST /api/navigation/import`，JSON `{backup,portalRevision,widgetRevision}`，最大2MiB。成功返回 `{success:true,restoreId,browserData:{pages,customSites,siteOrder},revisions:{portal,widgets}}`。每次成功恢复生成新restoreId，即使同一备份重复恢复。
+
+导航格式为 `launchdeck-navigation/version=1`，含 `backupId`（32小写hex）、`exportedAt`（规范ISO）、`sites`、`pages`、`desktop`（v2）及 `widgetSlots:[{id,type}]`。严格字段白名单，不含正文、配置或设备信息。只接受已注册组件及HTTP/HTTPS无凭据网址，拒绝缺失网站引用、嵌套文件夹、重复位置、未知字段、超过1MiB解压内容。共享纯模块在 `backend/navigation/`，HTTP只允许静态访问指定校验文件，不暴露数据库或服务代码。
+
+恢复前应排空本窗口两类保存队列，并阻止本窗口继续编辑。必须提交两份当前版本：409任一版本冲突、428网站文档尚未初始化、400数据错误、413请求超限、503存储失败；任何一项失败都不写入部分数据。HTTP采用同一SQLite事务，扩展采用队列内单次storage.set。只替换网站和桌面位置，保留当前prefs/note/todos/组件config/device；缺少的本机组件保留配置并隐藏。自定义页面及其网站在browserData中返回并持久化为恢复快照。
+
+独立恢复页与首页使用同源窗口消息，不接受其他来源窗口、过期/重放令牌；恢复页不加载主应用或自动写入数据。扩展内只支持手动粘贴/文件，网页版支持Bitwarden自定义字段填充。完整JSON备份API保留。
+
+`siteOrder`保存完整网站ID顺序，用于恢复预设/自定义分类混合的Dock排列；旧完整备份可省略。客户端合并时以自定义站点的下一已知系统站点为锚点，保留后端系统站点后续重排，也保留本机自定义站点的位置。

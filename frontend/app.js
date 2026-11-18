@@ -69,6 +69,11 @@ import {
   resolveViewDropBeforeAnchor,
 } from './lib/display-mode.js';
 import { createLocalWallpaperController } from './lib/local-wallpaper.js';
+import {
+  createNavigationBackupController,
+  NAVIGATION_RESTORE_ID_STORAGE_KEY,
+  mergeNavigationSites,
+} from './lib/navigation-backup.js';
 
 const STORAGE_KEYS = {
   PAGES: 'ios18_nav_pages_v1',
@@ -700,6 +705,7 @@ function finalizeDesktopMigrationOrReconcile(rawWidgetState, registry, { persist
 }
 
 function commitDesktopAndLayout(desktop = getEffectiveDesktopForRender(), layout = state.widgetState.layout) {
+  if (state.navigationImportInProgress) return;
   const reconciled = reconcileDesktopWithLayout(desktop, layout, {
     fallbackPages: state.pages,
     definitions: state.widgetRegistry,
@@ -719,6 +725,55 @@ function commitDesktopAndLayout(desktop = getEffectiveDesktopForRender(), layout
   });
   renderAll();
   renderAddWidgetModalList();
+}
+
+let pendingNavigationSiteOrder = null;
+
+async function hydrateNavigationBrowserDataOnStartup() {
+  try {
+    const navDoc = await featureClient.loadNavigationBrowserData();
+    const remoteRestoreId =
+      typeof navDoc?.restoreId === 'string' && navDoc.restoreId.trim()
+        ? navDoc.restoreId.trim()
+        : null;
+    if (!remoteRestoreId) return;
+    const localRestoreId = localStorage.getItem(NAVIGATION_RESTORE_ID_STORAGE_KEY);
+    if (localRestoreId === remoteRestoreId) {
+      return;
+    }
+    const browserData = navDoc?.data;
+    if (browserData && typeof browserData === 'object') {
+      if (
+        Array.isArray(browserData.siteOrder) &&
+        browserData.siteOrder.every((id) => typeof id === 'string' && id.length > 0)
+      ) {
+        pendingNavigationSiteOrder = browserData.siteOrder.slice();
+      } else {
+        pendingNavigationSiteOrder = null;
+      }
+      if (Array.isArray(browserData.pages) && browserData.pages.length > 0) {
+        state.pages = normalizePages(browserData.pages, DEFAULT_PAGES);
+        writeLocalStorage(STORAGE_KEYS.PAGES, JSON.stringify(state.pages));
+      }
+      if (Array.isArray(browserData.customSites)) {
+        const systemSites = state.sites.filter((s) =>
+          BACKEND_SUPPORTED_CATEGORIES.has(s.category)
+        );
+        const customSites = browserData.customSites.filter(
+          (s) => s && typeof s === 'object' && !BACKEND_SUPPORTED_CATEGORIES.has(s.category)
+        );
+        state.sites = mergeNavigationSites(
+          systemSites,
+          customSites,
+          pendingNavigationSiteOrder || state.sites.map((s) => s.id)
+        );
+        writeLocalStorage(STORAGE_KEYS.SITES, JSON.stringify(state.sites));
+      }
+    }
+    writeLocalStorage(NAVIGATION_RESTORE_ID_STORAGE_KEY, remoteRestoreId);
+  } catch {
+    // Ignore offline or unsupported endpoint errors during startup
+  }
 }
 
 async function bootstrapApp() {
@@ -748,6 +803,8 @@ async function bootstrapApp() {
   // Render initial local state without writing empty desktop before migration
   renderAll();
 
+  await hydrateNavigationBrowserDataOnStartup();
+
   // Connect with `window.PortalBackend` (`/api/state` for sites/prefs/note)
   if (window.PortalBackend) {
     const remoteState = await window.PortalBackend.load();
@@ -757,10 +814,14 @@ async function bootstrapApp() {
           s => !BACKEND_SUPPORTED_CATEGORIES.has(s.category)
         );
         const remoteIds = new Set(remoteState.sites.map(s => s.id));
-        state.sites = [
-          ...remoteState.sites,
-          ...localCustomPageSites.filter(s => !remoteIds.has(s.id)),
-        ];
+        const dedupedCustomSites = localCustomPageSites.filter(s => !remoteIds.has(s.id));
+        const effectiveSiteOrder = pendingNavigationSiteOrder || state.sites.map(s => s.id);
+        pendingNavigationSiteOrder = null;
+        state.sites = mergeNavigationSites(
+          remoteState.sites,
+          dedupedCustomSites,
+          effectiveSiteOrder
+        );
         writeLocalStorage(STORAGE_KEYS.SITES, JSON.stringify(state.sites));
       }
       if (remoteState.prefs && typeof remoteState.prefs === 'object') {
@@ -950,10 +1011,12 @@ function loadStateFromStorage() {
 }
 
 function savePagesToStorage() {
+  if (state.navigationImportInProgress) return;
   writeLocalStorage(STORAGE_KEYS.PAGES, JSON.stringify(state.pages));
 }
 
 function saveSitesToStorage(syncToBackend = true) {
+  if (state.navigationImportInProgress) return;
   writeLocalStorage(STORAGE_KEYS.SITES, JSON.stringify(state.sites));
   state.portalSyncStatus = { label: '本机已保存', hasError: false };
   updateSyncDiagnosticsUI();
@@ -963,6 +1026,7 @@ function saveSitesToStorage(syncToBackend = true) {
 }
 
 function savePrefsToStorage(syncToBackend = true) {
+  if (state.navigationImportInProgress) return;
   writeLocalStorage(STORAGE_KEYS.PREFS, JSON.stringify(state.prefs));
   state.portalSyncStatus = { label: '本机已保存', hasError: false };
   updateSyncDiagnosticsUI();
@@ -972,6 +1036,7 @@ function savePrefsToStorage(syncToBackend = true) {
 }
 
 function saveNoteToStorage(noteText, syncToBackend = true) {
+  if (state.navigationImportInProgress) return;
   state.note = noteText;
   writeLocalStorage(STORAGE_KEYS.NOTE, noteText);
   state.portalSyncStatus = { label: '本机已保存', hasError: false };
@@ -3986,6 +4051,175 @@ const localWallpaperController = createLocalWallpaperController({
   },
 });
 
+const NAVIGATION_IMPORT_BLOCKED_EVENTS = [
+  'keydown',
+  'keyup',
+  'keypress',
+  'beforeinput',
+  'input',
+  'change',
+  'submit',
+  'click',
+  'dblclick',
+  'contextmenu',
+  'pointerdown',
+  'pointermove',
+  'pointerup',
+  'mousedown',
+  'mouseup',
+  'touchstart',
+  'touchmove',
+  'touchend',
+  'dragstart',
+  'dragover',
+  'drop',
+];
+let navigationImportLockListenersBound = false;
+let previousBodyInertState = false;
+let hasCapturedBodyInertState = false;
+
+function blockMainWindowInteractionDuringImport(event) {
+  if (!state.navigationImportInProgress) return;
+  if (event?.cancelable) {
+    event.preventDefault();
+  }
+  event?.stopImmediatePropagation?.();
+  event?.stopPropagation?.();
+}
+
+function setNavigationImportEditLock(locked) {
+  const active = Boolean(locked);
+  if (active) {
+    desktopPointerDragController?.cancelDrag?.();
+    if (typeof cancelActivePageDrag === 'function') {
+      cancelActivePageDrag();
+    }
+  }
+  state.navigationImportInProgress = active;
+  if (typeof document !== 'undefined' && document.body) {
+    if (active) {
+      if (!hasCapturedBodyInertState) {
+        previousBodyInertState = Boolean(document.body.inert);
+        hasCapturedBodyInertState = true;
+      }
+      document.body.inert = true;
+      document.body.setAttribute('data-navigation-importing', 'true');
+    } else {
+      const restoreInert = hasCapturedBodyInertState ? previousBodyInertState : false;
+      hasCapturedBodyInertState = false;
+      previousBodyInertState = false;
+      document.body.inert = restoreInert;
+      if (!restoreInert) {
+        document.body.removeAttribute?.('inert');
+      }
+      document.body.removeAttribute('data-navigation-importing');
+    }
+  }
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    if (active && !navigationImportLockListenersBound) {
+      navigationImportLockListenersBound = true;
+      for (const evtName of NAVIGATION_IMPORT_BLOCKED_EVENTS) {
+        window.addEventListener(evtName, blockMainWindowInteractionDuringImport, true);
+      }
+    } else if (!active && navigationImportLockListenersBound) {
+      navigationImportLockListenersBound = false;
+      for (const evtName of NAVIGATION_IMPORT_BLOCKED_EVENTS) {
+        window.removeEventListener(evtName, blockMainWindowInteractionDuringImport, true);
+      }
+    }
+  }
+}
+
+const navigationBackupController = createNavigationBackupController({
+  getLiveNavigationSnapshot() {
+    const sitesSnapshot = structuredClone(state.sites);
+    const pagesSnapshot = structuredClone(state.pages);
+    const layoutSnapshot = structuredClone(
+      state.widgetState?.layout || createDefaultWidgetState(state.widgetRegistry).layout
+    );
+    const desktopSnapshot =
+      state.widgetState?.desktop && Array.isArray(state.widgetState.desktop.pages)
+        ? structuredClone(state.widgetState.desktop)
+        : migrateLegacyDesktop({
+            pages: structuredClone(state.pages),
+            sites: structuredClone(state.sites),
+            layout: structuredClone(layoutSnapshot),
+            definitions: state.widgetRegistry,
+          }).desktop;
+    return {
+      sites: sitesSnapshot,
+      pages: pagesSnapshot,
+      desktop: desktopSnapshot,
+      layout: layoutSnapshot,
+    };
+  },
+  async drainPendingBeforeImport() {
+    if (bootstrapInFlight) {
+      await bootstrapInFlight;
+    }
+    if (!hasBootstrapped) {
+      throw new Error('页面尚未完成初始化，请等待启动完成后再执行导航恢复');
+    }
+    if (window.PortalBackend) {
+      window.PortalBackend.save({
+        sites: getBackendSyncableSites(),
+        prefs: getBackendSyncablePrefs(),
+        note: state.note,
+      });
+      await window.PortalBackend.flushNow();
+    }
+    const effectiveDesktop = getEffectiveDesktopForRender();
+    featureClient.saveWidgetsState({
+      layout: state.widgetState.layout,
+      todos: state.widgetState.todos,
+      desktop: effectiveDesktop,
+    });
+    await featureClient.flushWidgetsNow();
+  },
+  async fetchRevisionsBeforeImport() {
+    const [portalDoc, widgetsDoc] = await Promise.all([
+      featureClient.fetchPortalState(),
+      featureClient.fetchWidgetsStateDoc(),
+    ]);
+    return {
+      portalRevision: portalDoc?.revision,
+      widgetRevision: widgetsDoc?.revision,
+    };
+  },
+  async postAtomicNavigationImport({ backup, portalRevision, widgetRevision }) {
+    return featureClient.importNavigationBackup({
+      backup,
+      portalRevision,
+      widgetRevision,
+    });
+  },
+  async applyImportedBrowserDataAndReload(importResult, validatedBackup) {
+    const restoredPages = Array.isArray(importResult?.browserData?.pages)
+      ? normalizePages(importResult.browserData.pages, DEFAULT_PAGES)
+      : normalizePages(validatedBackup.pages, DEFAULT_PAGES);
+    writeLocalStorage(STORAGE_KEYS.PAGES, JSON.stringify(restoredPages));
+
+    writeLocalStorage(
+      STORAGE_KEYS.SITES,
+      JSON.stringify(structuredClone(validatedBackup.sites))
+    );
+
+    if (typeof importResult?.restoreId === 'string' && importResult.restoreId) {
+      writeLocalStorage(NAVIGATION_RESTORE_ID_STORAGE_KEY, importResult.restoreId);
+    }
+
+    window.PortalBackend?.clearSyncedCache?.({
+      nextRevision: importResult?.revisions?.portal ?? null,
+    });
+    featureClient.clearDrainedWidgetsCache?.({
+      nextRevision: importResult?.revisions?.widgets ?? null,
+    });
+
+    window.location?.reload?.();
+  },
+  setEditLock: setNavigationImportEditLock,
+});
+
 function initCustomizeSheet() {
   const openBtn = document.getElementById('openCustomizeBtn');
   const closeBtn = document.getElementById('closeCustomizeBtn');
@@ -4612,6 +4846,8 @@ function initSettingsModalControls() {
     await refreshEnvironmentAndWeather(true);
     updateSyncDiagnosticsUI();
   });
+
+  navigationBackupController.bindDOMEvents();
 }
 
 // ==========================================================================
@@ -5611,5 +5847,6 @@ export {
   featureClient,
   widgetHost,
   localWallpaperController,
+  navigationBackupController,
   WIDGET_MODULE_MAP,
 };

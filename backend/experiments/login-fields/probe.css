@@ -1,0 +1,7 @@
+:root { color-scheme: dark; font: 16px/1.65 system-ui,sans-serif; background: #101521; color: #e7edf7; }
+body { margin: 0; padding: 24px; } main { max-width: 820px; margin: auto; }
+section { padding: 20px; margin: 20px 0; background: #192233; border: 1px solid #3c475c; border-radius: 18px; }
+h1 { font-size: 1.6rem; } h2 { font-size: 1.15rem; }
+label { display: block; margin: 12px 0; } input { display: block; box-sizing: border-box; width: 100%; padding: 10px; border-radius: 8px; font: inherit; }
+button { padding: 9px 12px; margin: 4px 6px 4px 0; border-radius: 10px; border: 1px solid #627b9f; color: inherit; background: #293c5e; font: inherit; cursor: pointer; }
+button:disabled { opacity: .4; } pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }

@@ -8,6 +8,7 @@
   let pending = {};
   let timer;
   let saving = false;
+  let inflightPromise = null;
   let notified = false;
 
   function persist() {
@@ -78,27 +79,50 @@
     return body;
   }
 
-  async function flush() {
-    if (!enabled || blocked || saving || !Object.keys(pending).length) return;
+  async function flush({ throwOnError = false } = {}) {
+    if (inflightPromise) {
+      if (throwOnError) {
+        await inflightPromise;
+      } else {
+        return inflightPromise;
+      }
+    }
+    if (!enabled || blocked || saving || !Object.keys(pending).length) {
+      if (throwOnError && blocked) {
+        const err = new Error('桌面或便签数据存在未解决的同步冲突，请先处理冲突');
+        err.status = 409;
+        throw err;
+      }
+      return;
+    }
     saving = true;
     const patch = structuredClone(pending);
-    try {
-      const result = await request({ method: 'PATCH', headers: { 'Content-Type': 'application/json', 'If-Match': `"${revision}"` }, body: JSON.stringify(patch), keepalive: true });
-      revision = result.revision;
-      for (const key of Object.keys(patch)) {
-        if (JSON.stringify(pending[key]) === JSON.stringify(patch[key])) delete pending[key];
+    let capturedError = null;
+    inflightPromise = (async () => {
+      try {
+        const result = await request({ method: 'PATCH', headers: { 'Content-Type': 'application/json', 'If-Match': `"${revision}"` }, body: JSON.stringify(patch), keepalive: true });
+        revision = result.revision;
+        for (const key of Object.keys(patch)) {
+          if (JSON.stringify(pending[key]) === JSON.stringify(patch[key])) delete pending[key];
+        }
+        persist();
+        notified = false;
+        notify('已保存到数据库');
+      } catch (error) {
+        capturedError = error;
+        if (error.status === 409 || error.status === 400) blocked = true;
+        persist();
+        if (!notified) notify(error.status === 409 ? '其他页面已更新数据；本机修改已保留，等待选择同步版本' : error.status === 400 ? '数据格式不兼容；本机修改已保留，暂未同步' : '本次修改保存在本机，尚未同步到数据库', error.status === 409);
+        notified = true;
+      } finally {
+        saving = false;
+        inflightPromise = null;
+        if (!blocked && Object.keys(pending).length && !throwOnError) timer = setTimeout(flush, 3000);
       }
-      persist();
-      notified = false;
-      notify('已保存到数据库');
-    } catch (error) {
-      if (error.status === 409 || error.status === 400) blocked = true;
-      persist();
-      if (!notified) notify(error.status === 409 ? '其他页面已更新数据；本机修改已保留，等待选择同步版本' : error.status === 400 ? '数据格式不兼容；本机修改已保留，暂未同步' : '本次修改保存在本机，尚未同步到数据库', error.status === 409);
-      notified = true;
-    } finally {
-      saving = false;
-      if (!blocked && Object.keys(pending).length) timer = setTimeout(flush, 3000);
+    })();
+    await inflightPromise;
+    if (throwOnError && capturedError) {
+      throw capturedError;
     }
   }
 
@@ -146,6 +170,76 @@
       persist();
       if (choice === 'local') await flush();
       else location.reload();
+    },
+    async flushNow() {
+      if (!['http:', 'https:'].includes(location.protocol)) {
+        const err = new Error('当前环境未连接后端服务');
+        err.status = 0;
+        throw err;
+      }
+      clearTimeout(timer);
+      timer = undefined;
+      if (inflightPromise) {
+        await inflightPromise;
+      }
+      if (!enabled || revision === null) {
+        restore();
+        const result = await request();
+        const hadPending = Object.keys(pending).length > 0;
+        if (hadPending && revision !== null && result.revision !== revision) {
+          for (const key of Object.keys(pending)) {
+            if (JSON.stringify(pending[key]) === JSON.stringify(result.state?.[key])) delete pending[key];
+          }
+          blocked = result.state !== null && Object.keys(pending).length > 0;
+        }
+        if (!Object.keys(pending).length) blocked = false;
+        revision = result.revision;
+        enabled = true;
+        persist();
+      }
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        clearTimeout(timer);
+        timer = undefined;
+        if (inflightPromise) {
+          await inflightPromise;
+        }
+        if (blocked) {
+          const err = new Error('桌面或便签数据存在未解决的同步冲突，请先处理冲突后再操作');
+          err.status = 409;
+          throw err;
+        }
+        if (!Object.keys(pending).length) {
+          break;
+        }
+        await flush({ throwOnError: true });
+      }
+      if (inflightPromise) {
+        await inflightPromise;
+      }
+      if (blocked || Object.keys(pending).length > 0) {
+        const err = new Error('桌面与便签未同步修改尚未排空，已中止操作以保护本机数据');
+        err.status = blocked ? 409 : 503;
+        throw err;
+      }
+      return { revision };
+    },
+    getRevision() {
+      return revision;
+    },
+    hasPending() {
+      return Boolean(saving || blocked || Object.keys(pending).length > 0);
+    },
+    clearSyncedCache({ nextRevision = null } = {}) {
+      clearTimeout(timer);
+      timer = undefined;
+      pending = {};
+      blocked = false;
+      revision = Number.isInteger(nextRevision) ? nextRevision : null;
+      try {
+        localStorage.removeItem(OUTBOX_KEY);
+        if (revision !== null) localStorage.setItem(REVISION_KEY, String(revision));
+        else localStorage.removeItem(REVISION_KEY);
+      } catch { /* ignore storage errors */ }
     },
   };
   document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(timer); void flush(); } });
