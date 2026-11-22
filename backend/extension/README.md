@@ -26,6 +26,8 @@
 
 0.5.1 移除编辑模式下卡片底部的左右移动箭头与空占位，保留拖动排序、边缘跨页和页面两侧翻页。Dock 渲染全部固定网站：空间足够时居中完整展示，实际宽度不足时仅网站区横向滚动，右侧两个操作按钮固定可达。支持鼠标拖动、滚轮/触控板、键盘聚焦；触摸与手写笔保留浏览器原生横滑及缩放。窗口变宽后自动清除滚动偏移。数据格式、保存接口和权限不变。
 
+0.9.0 新增夜间模式和可调整尺寸的小组件。进入编辑模式后可选择 2 列×1 行、2 列×2 行或 4 列×2 行，专注计时支持前两种尺寸。尺寸随布局保存，窄窗的临时缩小不会覆盖偏好。导航备份现在也包含已选尺寸，并可读取旧版备份。
+
 ## 构建与产物
 
 在项目根目录运行：
@@ -36,18 +38,18 @@ npm run build:extension
 
 生成：
 
-- `backend/extension/dist/launchdeck-new-tab/`：可直接通过开发者模式加载的目录，内含 manifest.json。
-- `backend/extension/dist/launchdeck-new-tab.zip`：同一目录的压缩包，可用于传送；开发者模式加载前先解压。
+- `releases/launchdeck-new-tab/`：可直接通过开发者模式加载的目录，内含 manifest.json。
+- `releases/launchdeck-new-tab.zip`：同一目录的压缩包，可用于传送；开发者模式加载前先解压。
 
 构建器只复制允许的前端资源和纯 JavaScript 校验模块，不复制 SQLite、Cookie、环境文件、个人备份或 Node.js 服务代码。检查模块路径、符号链接与脚本语法，记录源文件校验值。输出目录只允许替换带 LaunchDeck 构建标记的旧产物。
 
-前端源文件保持原样。当前构建在**生成的文件**中启用 chrome-extension: 平台识别，并用统一 entry.js 启动本地消息桥；协议与 UI 适配记录见产物中的 `.launchdeck-generated.json`。不要直接修改 dist，应修改来源后重新构建。
+前端源文件保持原样。当前构建在**生成的文件**中启用 chrome-extension: 平台识别，并用统一 entry.js 启动本地消息桥；协议与 UI 适配记录见产物中的 `.launchdeck-generated.json`。修改源码后重新构建即可更新 `releases/` 中的产物。
 
 ## 在 Chrome / Edge 加载
 
 1. Chrome 打开 `chrome://extensions/`；Edge 打开 `edge://extensions/`。
 2. 打开“开发者模式”，选择“加载已解压的扩展程序”。
-3. 选择 `backend/extension/dist/launchdeck-new-tab/`，不要选其父目录或 ZIP 文件。
+3. 选择 `releases/launchdeck-new-tab/`，该目录中直接包含 `manifest.json`。
 4. 新建一个标签页，按浏览器提示确认使用此扩展提供的新标签页。
 
 扩展尚未自动安装，也未提交应用商店。加载操作会让此扩展接管新标签页，请在查看文件后自行确认。普通加载版更新时保持目录路径不变，在扩展管理页点“重新加载”，再刷新已打开的起始页。
@@ -78,7 +80,7 @@ npm run build:extension
 - 不增加站点抓取、第三方图标服务、远程 SVG 注入、<all_urls> 或 web_accessible_resources。原有 img-src self 已支持此扩展内部资源，无需放宽 CSP。
 - 仅将图标作为 img 加载；加载过程中保留首字，失败/超时回退，短期内避免反复失败重试。浏览器也可能成功返回通用占位图；本扩展不声称每个网址都一定能取得品牌图标。
 - 该能力只在安装后的扩展页生效，普通 localhost 网页没有扩展的 favicon 权限，仍按其现有渲染方式显示。
-- 当前包版本为 0.8.0，favicon 功能自 0.2.0 提供。在扩展管理页重新加载同一目录后，再打开/刷新新标签页；若从更早版本升级时浏览器要求确认 favicon 权限，需由用户完成。
+- 当前包版本为 0.9.0，favicon 功能自 0.2.0 提供。在扩展管理页重新加载同一目录后，再打开或刷新新标签页。若从更早版本升级时浏览器要求确认 favicon 权限，需由用户完成。
 
 原生接口参考：[Chrome favicon 官方说明](https://developer.chrome.com/docs/extensions/how-to/ui/favicons)。Edge 的具体显示与权限提示仍需在真实浏览器验证。
 

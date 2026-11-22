@@ -83,6 +83,54 @@ export function resolveEffectiveDisplayMode({
   return normalizeMobileDisplayMode(mobileDisplayMode);
 }
 
+export function resolveWidgetDisplaySize(item, metrics = {}) {
+  if (!item || item.kind !== 'widget') {
+    return 'compact';
+  }
+  const widget = item.widget || item;
+  const widgetType = widget?.type || item?.type || '';
+  const rawSize = widget?.size || item?.size || 'compact';
+  let size = rawSize === 'square' || rawSize === 'wide' ? rawSize : 'compact';
+
+  if (widgetType === 'focus-timer' && size === 'wide') {
+    size = 'compact';
+  }
+
+  if (metrics?.isMobile === true && metrics?.effectiveMode === DISPLAY_MODES.COMPACT) {
+    return 'compact';
+  }
+
+  const maxRows =
+    metrics?.maxRows !== undefined && metrics?.maxRows !== null ? Number(metrics.maxRows) : 6;
+  if (Number.isFinite(maxRows) && maxRows < 2) {
+    return 'compact';
+  }
+
+  const columns = Math.max(1, Number(metrics?.columns) || 6);
+  if (size === 'wide' && columns < 4) {
+    size = 'square';
+  }
+
+  return size;
+}
+
+export function getWidgetGridSpan(item, metrics = {}) {
+  const columns = Math.max(1, Number(metrics?.columns) || 6);
+  if (!item || item.kind !== 'widget') {
+    return { colSpan: 1, rowSpan: 1 };
+  }
+  const size = resolveWidgetDisplaySize(item, metrics);
+  if (size === 'wide') {
+    return { colSpan: Math.min(columns, 4), rowSpan: 2 };
+  }
+  if (size === 'square') {
+    return { colSpan: Math.min(columns, 2), rowSpan: 2 };
+  }
+  const defaultColSpan = Math.min(columns, Math.max(1, Number(metrics?.widgetColSpan) || 2));
+  const defaultRowSpan = Math.max(1, Number(metrics?.widgetRowSpan) || 1);
+  return { colSpan: defaultColSpan, rowSpan: defaultRowSpan };
+}
+
 /**
  * Computes responsive single-screen metrics for:
  * - Desktop Compact (e.g. 1280x720, 1366x768, 1440x900)
@@ -101,11 +149,15 @@ export function computeSingleScreenMetrics({
   measuredAvailableGridHeight = null,
 } = {}) {
   const width = Math.max(320, Math.round(Number(viewportWidth) || 1280));
-  const height = Math.max(480, Math.round(Number(viewportHeight) || 800));
+  const rawHeight = Math.round(Number(viewportHeight) || 800);
+  const height = Math.max(240, rawHeight);
   const isMobile = isMobileViewport(width);
   const effectiveMode = resolveEffectiveDisplayMode({ viewportWidth: width, mobileDisplayMode });
   const hasMeasuredGridHeight =
-    Number.isFinite(Number(measuredAvailableGridHeight)) && Number(measuredAvailableGridHeight) >= 180;
+    measuredAvailableGridHeight !== null &&
+    measuredAvailableGridHeight !== undefined &&
+    Number.isFinite(Number(measuredAvailableGridHeight)) &&
+    Number(measuredAvailableGridHeight) > 0;
 
   if (!isMobile) {
     // Desktop Compact: 8 columns, each summary widget spans 2x1 (equal to 2 site cells).
@@ -116,12 +168,12 @@ export function computeSingleScreenMetrics({
     const maxDefaultCells = 6 * widgetColSpan + 24; // 36
     const targetRows = Math.ceil(maxDefaultCells / columns); // 5 on 8-col, 6 on 6-col
     const reservedChromePx = height <= 740 ? 276 : 284;
+    const unmeasuredHeight = height - reservedChromePx - Math.max(0, safeAreaTop) - Math.max(0, safeAreaBottom);
     const availableGridHeight = hasMeasuredGridHeight
-      ? Math.floor(Number(measuredAvailableGridHeight))
-      : Math.max(
-          260,
-          height - reservedChromePx - Math.max(0, safeAreaTop) - Math.max(0, safeAreaBottom)
-        );
+      ? Math.max(1, Math.floor(Number(measuredAvailableGridHeight)))
+      : height < 480
+        ? Math.max(60, unmeasuredHeight)
+        : Math.max(260, unmeasuredHeight);
     const rowGap = height <= 740 ? 8 : 10;
     const colGap = width <= 1280 ? 12 : 14;
     const rawRowHeight = Math.floor(
@@ -161,21 +213,21 @@ export function computeSingleScreenMetrics({
     const widgetColSpan = 2;
     const widgetRowSpan = 1;
     const reservedChromePx = height <= 680 ? 266 : 278;
+    const unmeasuredHeight = height - reservedChromePx - Math.max(0, safeAreaTop) - Math.max(0, safeAreaBottom);
     const availableGridHeight = hasMeasuredGridHeight
-      ? Math.floor(Number(measuredAvailableGridHeight))
-      : Math.max(
-          220,
-          height - reservedChromePx - Math.max(0, safeAreaTop) - Math.max(0, safeAreaBottom)
-        );
+      ? Math.max(1, Math.floor(Number(measuredAvailableGridHeight)))
+      : height < 480
+        ? Math.max(60, unmeasuredHeight)
+        : Math.max(220, unmeasuredHeight);
     const rowGap = 10;
     const colGap = 10;
     const rowHeight = height <= 680 ? 78 : 84;
     const iconSize = height <= 680 ? 50 : 54;
     const maxRows = Math.max(
-      2,
+      1,
       Math.floor((availableGridHeight + rowGap) / (rowHeight + rowGap))
     );
-    const maxUnitsPerView = Math.max(8, maxRows * columns);
+    const maxUnitsPerView = Math.max(columns, maxRows * columns);
 
     return {
       isMobile: true,
@@ -204,12 +256,12 @@ export function computeSingleScreenMetrics({
   const widgetRowSpan = 1;
   const targetRows = 6; // 6 * 6 = 36 units (6 widgets * 2 + 24 sites)
   const reservedChromePx = height <= 680 ? 256 : 268;
+  const unmeasuredHeight = height - reservedChromePx - Math.max(0, safeAreaTop) - Math.max(0, safeAreaBottom);
   const availableGridHeight = hasMeasuredGridHeight
-    ? Math.floor(Number(measuredAvailableGridHeight))
-    : Math.max(
-        220,
-        height - reservedChromePx - Math.max(0, safeAreaTop) - Math.max(0, safeAreaBottom)
-      );
+    ? Math.max(1, Math.floor(Number(measuredAvailableGridHeight)))
+    : height < 480
+      ? Math.max(60, unmeasuredHeight)
+      : Math.max(220, unmeasuredHeight);
   const rowGap = height <= 680 ? 5 : 7;
   const colGap = width <= 360 ? 4 : 6;
   const rawRowHeight = Math.floor(
@@ -243,38 +295,80 @@ export function computeSingleScreenMetrics({
   };
 }
 
+function findNextGridSlot(occupied, startRow, startCol, colSpan, rowSpan, safeCols) {
+  let r = startRow;
+  let c = startCol;
+  while (true) {
+    if (c + colSpan > safeCols) {
+      r += 1;
+      c = 0;
+    }
+    let fits = true;
+    for (let dr = 0; dr < rowSpan && fits; dr += 1) {
+      for (let dc = 0; dc < colSpan; dc += 1) {
+        if (occupied.has((r + dr) * safeCols + (c + dc))) {
+          fits = false;
+          break;
+        }
+      }
+    }
+    if (fits) {
+      return { row: r, col: c };
+    }
+    c += 1;
+    if (c >= safeCols) {
+      r += 1;
+      c = 0;
+    }
+  }
+}
+
+function markGridSlotOccupied(occupied, row, col, colSpan, rowSpan, safeCols) {
+  for (let dr = 0; dr < rowSpan; dr += 1) {
+    for (let dc = 0; dc < colSpan; dc += 1) {
+      occupied.add((row + dr) * safeCols + (col + dc));
+    }
+  }
+}
+
 /**
  * Simulates CSS Grid row-flow placement (grid-auto-flow: row, NOT dense)
- * to calculate exact unit consumption including end-of-row wrapping when a 2-column
- * widget cannot fit in the remaining columns of the current row.
+ * to calculate exact unit consumption including end-of-row wrapping and multi-row span occupancy.
  */
-export function measureGridFlowRows(items = [], { columns = 6, widgetColSpan = 2 } = {}) {
-  const safeCols = Math.max(1, Number(columns) || 6);
-  const safeWidgetSpan = Math.min(safeCols, Math.max(1, Number(widgetColSpan) || 2));
-  let currentRow = 0;
-  let currentCol = 0;
+export function measureGridFlowRows(items = [], metrics = {}) {
+  const safeCols = Math.max(1, Number(metrics?.columns) || 6);
+  const occupied = new Set();
+  let cursorRow = 0;
+  let cursorCol = 0;
+  let totalRows = 0;
   const positions = [];
 
   for (const item of items) {
-    const span = item?.kind === 'widget' ? safeWidgetSpan : 1;
-    if (currentCol + span > safeCols) {
-      currentRow += 1;
-      currentCol = 0;
-    }
+    const { colSpan, rowSpan } = getWidgetGridSpan(item, { ...metrics, columns: safeCols });
+    const span = Math.min(safeCols, Math.max(1, colSpan));
+    const rSpan = Math.max(1, rowSpan);
+
+    const slot = findNextGridSlot(occupied, cursorRow, cursorCol, span, rSpan, safeCols);
+    markGridSlotOccupied(occupied, slot.row, slot.col, span, rSpan, safeCols);
+
     positions.push({
       item,
-      row: currentRow,
-      col: currentCol,
+      row: slot.row,
+      col: slot.col,
       span,
+      colSpan: span,
+      rowSpan: rSpan,
     });
-    currentCol += span;
-    if (currentCol >= safeCols) {
-      currentRow += 1;
-      currentCol = 0;
+
+    totalRows = Math.max(totalRows, slot.row + rSpan);
+    cursorRow = slot.row;
+    cursorCol = slot.col + span;
+    if (cursorCol >= safeCols) {
+      cursorRow += 1;
+      cursorCol = 0;
     }
   }
 
-  const totalRows = positions.length === 0 ? 0 : currentCol > 0 ? currentRow + 1 : currentRow;
   return {
     totalRows,
     positions,
@@ -297,42 +391,45 @@ export function packCategoryItemsIntoViews(
   } = {}
 ) {
   const list = Array.isArray(items) ? items : [];
-  const columns = Math.max(1, metrics?.columns || 6);
-  const widgetSpan = Math.min(columns, Math.max(1, metrics?.widgetColSpan || 2));
+  const columns = Math.max(1, Number(metrics?.columns) || 6);
+  const computedMaxRows =
+    Number(metrics?.maxRows) > 0
+      ? Math.floor(Number(metrics.maxRows))
+      : metrics?.availableGridHeight && metrics?.rowHeight
+        ? Math.floor(
+            (Number(metrics.availableGridHeight) + Number(metrics.rowGap || 0)) /
+              (Number(metrics.rowHeight) + Number(metrics.rowGap || 0))
+          )
+        : Math.floor((Number(metrics?.maxUnitsPerView || metrics?.maxVisibleCompactUnits) || 36) / columns);
+  const maxRows = Math.max(1, computedMaxRows);
+  const effectiveMetrics = { ...metrics, columns, maxRows };
 
   if (metrics?.effectiveMode !== DISPLAY_MODES.COMFORT) {
-    const computedMaxRows =
-      Number(metrics?.maxRows) > 0
-        ? Math.floor(Number(metrics.maxRows))
-        : metrics?.availableGridHeight && metrics?.rowHeight
-          ? Math.floor(
-              (Number(metrics.availableGridHeight) + Number(metrics.rowGap || 0)) /
-                (Number(metrics.rowHeight) + Number(metrics.rowGap || 0))
-            )
-          : Math.floor((Number(metrics?.maxVisibleCompactUnits) || 36) / columns);
-    const maxRows = Math.max(1, computedMaxRows);
     const visibleItems = [];
     const overflowItems = [];
-    let row = 0;
-    let col = 0;
+    const occupied = new Set();
+    let cursorRow = 0;
+    let cursorCol = 0;
 
     for (const entry of list) {
-      const span = entry?.kind === 'widget' ? widgetSpan : 1;
-      let nextRow = row;
-      let nextCol = col;
-      if (nextCol + span > columns) {
-        nextRow += 1;
-        nextCol = 0;
+      if (overflowItems.length > 0) {
+        overflowItems.push(entry);
+        continue;
       }
-      if (nextRow < maxRows && overflowItems.length === 0) {
+      const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
+      const span = Math.min(columns, Math.max(1, colSpan));
+      const rSpan = Math.max(1, rowSpan);
+
+      const slot = findNextGridSlot(occupied, cursorRow, cursorCol, span, rSpan, columns);
+      if (slot.row + rSpan <= maxRows) {
         visibleItems.push(entry);
-        nextCol += span;
-        if (nextCol >= columns) {
-          nextRow += 1;
-          nextCol = 0;
+        markGridSlotOccupied(occupied, slot.row, slot.col, span, rSpan, columns);
+        cursorRow = slot.row;
+        cursorCol = slot.col + span;
+        if (cursorCol >= columns) {
+          cursorRow += 1;
+          cursorCol = 0;
         }
-        row = nextRow;
-        col = nextCol;
       } else {
         overflowItems.push(entry);
       }
@@ -354,8 +451,7 @@ export function packCategoryItemsIntoViews(
   }
 
   // Comfort mode: pack into temporary sub-views by row capacity
-  const maxUnitsPerView = Math.max(columns * 2, Number(metrics?.maxUnitsPerView) || 16);
-  const maxRowsPerView = Math.max(2, Math.floor(maxUnitsPerView / columns));
+  const maxRowsPerView = maxRows;
 
   if (list.length === 0) {
     return [
@@ -375,36 +471,37 @@ export function packCategoryItemsIntoViews(
 
   const chunks = [];
   let currentChunk = [];
-  let row = 0;
-  let col = 0;
+  let occupied = new Set();
+  let cursorRow = 0;
+  let cursorCol = 0;
 
   for (const entry of list) {
-    const span = entry?.kind === 'widget' ? widgetSpan : 1;
-    let nextRow = row;
-    let nextCol = col;
-    if (nextCol + span > columns) {
-      nextRow += 1;
-      nextCol = 0;
-    }
+    const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
+    const span = Math.min(columns, Math.max(1, colSpan));
+    const rSpan = Math.max(1, rowSpan);
 
-    if (nextRow >= maxRowsPerView && currentChunk.length > 0) {
+    const slot = findNextGridSlot(occupied, cursorRow, cursorCol, span, rSpan, columns);
+
+    if (slot.row + rSpan > maxRowsPerView && currentChunk.length > 0) {
       chunks.push(currentChunk);
       currentChunk = [entry];
-      row = 0;
-      col = span;
-      if (col >= columns) {
-        row = 1;
-        col = 0;
+      occupied = new Set();
+      markGridSlotOccupied(occupied, 0, 0, span, rSpan, columns);
+      cursorRow = 0;
+      cursorCol = span;
+      if (cursorCol >= columns) {
+        cursorRow = 1;
+        cursorCol = 0;
       }
     } else {
       currentChunk.push(entry);
-      nextCol += span;
-      if (nextCol >= columns) {
-        nextRow += 1;
-        nextCol = 0;
+      markGridSlotOccupied(occupied, slot.row, slot.col, span, rSpan, columns);
+      cursorRow = slot.row;
+      cursorCol = slot.col + span;
+      if (cursorCol >= columns) {
+        cursorRow += 1;
+        cursorCol = 0;
       }
-      row = nextRow;
-      col = nextCol;
     }
   }
 

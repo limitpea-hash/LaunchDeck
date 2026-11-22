@@ -1,19 +1,28 @@
 import { check, record, string, integer, identifier, timeZone, dateOnly } from './schema.js';
 import { HttpError } from '../validation.js';
 
+const RESIZABLE_SIZES = Object.freeze(['compact', 'square', 'wide']);
+const TIMER_SIZES = Object.freeze(['compact', 'square']);
+
 // Reviewed, local widget types only. JSON configuration never selects executable files.
 export const widgetDefinitions = [
-  { type: 'clock-weather', title: '时钟与天气', version: 1, sizes: ['medium'], defaultConfig: { showSeconds: true }, capabilities: ['clock', 'weather', 'device-settings'] },
-  { type: 'focus-timer', title: '专注计时', version: 1, sizes: ['medium'], defaultConfig: { workMinutes: 25, breakMinutes: 5 }, capabilities: ['local-timer'] },
-  { type: 'quick-note', title: '速记', version: 1, sizes: ['medium'], defaultConfig: {}, capabilities: ['shared-note'] },
-  { type: 'todo', title: '待办清单', version: 1, sizes: ['medium'], defaultConfig: { hideCompleted: false }, capabilities: ['shared-todos'] },
-  { type: 'calendar', title: '月历', version: 1, sizes: ['medium'], defaultConfig: { weekStartsOn: 1 }, capabilities: ['clock'] },
-  { type: 'world-clock', title: '世界时钟', version: 1, sizes: ['medium'], defaultConfig: { zones: [
+  { type: 'clock-weather', title: '时钟与天气', version: 1, sizes: RESIZABLE_SIZES, defaultConfig: { showSeconds: true }, capabilities: ['clock', 'weather', 'device-settings'] },
+  { type: 'focus-timer', title: '专注计时', version: 1, sizes: TIMER_SIZES, defaultConfig: { workMinutes: 25, breakMinutes: 5 }, capabilities: ['local-timer'] },
+  { type: 'quick-note', title: '速记', version: 1, sizes: RESIZABLE_SIZES, defaultConfig: {}, capabilities: ['shared-note'] },
+  { type: 'todo', title: '待办清单', version: 1, sizes: RESIZABLE_SIZES, defaultConfig: { hideCompleted: false }, capabilities: ['shared-todos'] },
+  { type: 'calendar', title: '月历', version: 1, sizes: RESIZABLE_SIZES, defaultConfig: { weekStartsOn: 1 }, capabilities: ['clock'] },
+  { type: 'world-clock', title: '世界时钟', version: 1, sizes: RESIZABLE_SIZES, defaultConfig: { zones: [
     { label: '上海', timeZone: 'Asia/Shanghai' },
     { label: '伦敦', timeZone: 'Europe/London' },
     { label: '纽约', timeZone: 'America/New_York' },
   ] }, capabilities: ['clock'] },
 ];
+
+export function validateWidgetSize(item, definition) {
+  if (Object.hasOwn(item, 'size')) {
+    check(definition.sizes.includes(item.size), '小组件尺寸不受该类型支持');
+  }
+}
 
 export function defaultWidgetState() {
   return { layout: widgetDefinitions.map((definition, order) => ({
@@ -147,11 +156,13 @@ export function validateWidgetPatch(patch) {
     const ids = new Set();
     const orders = new Set();
     for (const widget of patch.layout) {
-      record(widget, ['id', 'type', 'enabled', 'order', 'config'], '小组件');
+      record(widget, ['id', 'type', 'enabled', 'order', 'config', 'size'], '小组件');
       identifier(widget.id);
       check(!ids.has(widget.id), '小组件 ID 重复');
       ids.add(widget.id);
-      check(widgetDefinitions.some(definition => definition.type === widget.type), '小组件类型未注册');
+      const definition = widgetDefinitions.find(definition => definition.type === widget.type);
+      check(definition, '小组件类型未注册');
+      validateWidgetSize(widget, definition);
       check(typeof widget.enabled === 'boolean', '小组件启用状态必须为布尔值');
       integer(widget.order, 0, 23, '小组件顺序');
       check(!orders.has(widget.order), '小组件顺序重复');

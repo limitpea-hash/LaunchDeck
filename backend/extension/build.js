@@ -61,7 +61,7 @@ export function extractIconPresets(source) {
   return { icons, domains };
 }
 
-export async function buildExtension({ sourceRoot = projectRoot, outputRoot = join(sourceRoot, 'backend/extension/dist'), zip = true } = {}) {
+export async function buildExtension({ sourceRoot = projectRoot, outputRoot = join(sourceRoot, 'releases'), zip = true } = {}) {
   await mkdir(outputRoot, { recursive: true });
   const staging = await mkdtemp(join(outputRoot, '.launchdeck-build-'));
   const target = join(outputRoot, 'launchdeck-new-tab');

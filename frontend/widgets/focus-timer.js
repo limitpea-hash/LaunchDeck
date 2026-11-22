@@ -1,4 +1,10 @@
 import { el, clearElement, setText } from '../lib/dom.js';
+import {
+  createCompactTopRow,
+  createFocusProgressRing,
+  createStaticWidgetIcon,
+  createSummaryExtra,
+} from './summary-helpers.js';
 
 export function mount(root, context) {
   clearElement(root);
@@ -92,19 +98,44 @@ export function mount(root, context) {
   );
 
   const inner = el('div', { className: 'widget-inner' }, topRow, mainRow, progressTrack, presetsRow, configForm);
-  const compactPrimary = el('div', { className: 'widget-compact-primary', textContent: '25:00' });
-  const compactSecondary = el('div', { className: 'widget-compact-secondary', textContent: '专注番茄钟 · 待机' });
+  const compactPrimary = el('div', { className: 'widget-compact-primary compact-focus-time', textContent: '25:00' });
+  const compactSecondary = el('div', { className: 'widget-compact-secondary compact-focus-state', textContent: '专注番茄钟 · 待机' });
+  const compactRing = createFocusProgressRing();
+  const { topRow: compactTopRow } = createCompactTopRow({
+    kickerText: '专注计时',
+    iconNode: createStaticWidgetIcon('focus-timer'),
+    accentClass: 'is-focus',
+  });
+  const compactBody = el(
+    'div',
+    { className: 'compact-focus-body' },
+    el('div', { className: 'compact-focus-meta' }, compactPrimary, compactSecondary),
+    compactRing.root
+  );
+  const summaryPhaseBadge = el('span', { className: 'summary-focus-phase-badge', textContent: '专注时段' });
+  const summaryElapsedEl = el('span', { className: 'summary-focus-elapsed', textContent: '已进行 00:00' });
+  const summaryStatusRow = el(
+    'div',
+    { className: 'summary-focus-status-row' },
+    summaryPhaseBadge,
+    summaryElapsedEl
+  );
+  const summaryBarFill = el('div', { className: 'summary-focus-bar-fill' });
+  summaryBarFill.style.width = '0%';
+  const summaryBarTrack = el('div', { className: 'summary-focus-bar-track', 'aria-hidden': 'true' }, summaryBarFill);
+  const summaryPresetMeta = el('div', { className: 'summary-focus-preset-meta', textContent: '' });
+  const summaryExtra = createSummaryExtra(
+    'summary-extra-focus-timer',
+    summaryStatusRow,
+    summaryBarTrack,
+    summaryPresetMeta
+  );
   const compactSummary = el(
     'div',
-    { className: 'widget-compact-summary' },
-    el(
-      'div',
-      { className: 'widget-compact-top' },
-      el('span', { className: 'widget-compact-kicker', textContent: '专注计时' }),
-      el('span', { className: 'widget-compact-badge', textContent: '详情 ↗' })
-    ),
-    compactPrimary,
-    compactSecondary
+    { className: 'widget-compact-summary compact-layout-focus-timer' },
+    compactTopRow,
+    compactBody,
+    summaryExtra
   );
   const label = el('span', { className: 'widget-label', textContent: '专注计时' });
   root.append(inner, compactSummary, label);
@@ -135,7 +166,24 @@ export function mount(root, context) {
     setText(compactPrimary, formatted);
     setText(
       compactSecondary,
-      `${phase === 'work' ? '专注' : '休息'} · ${running ? '计时进行中' : '点击操作'}`
+      `${phase === 'work' ? '专注' : '休息'} · ${running ? '计时中' : '待机'}`
+    );
+    compactRing.setProgress(pct, phase, running);
+    compactSummary.dataset.phase = phase;
+    compactSummary.dataset.running = running ? 'true' : 'false';
+
+    const elapsedMins = Math.floor(elapsed / 60);
+    const elapsedSecs = elapsed % 60;
+    const elapsedFormatted = `${String(elapsedMins).padStart(2, '0')}:${String(elapsedSecs).padStart(2, '0')}`;
+    setText(
+      summaryPhaseBadge,
+      `${phase === 'work' ? '专注模式' : '休息恢复'} · ${running ? '运行中' : '已暂停/待机'}`
+    );
+    setText(summaryElapsedEl, `已用 ${elapsedFormatted} · ${Math.round(pct)}%`);
+    summaryBarFill.style.width = `${pct.toFixed(1)}%`;
+    setText(
+      summaryPresetMeta,
+      `设定：专注 ${config.workMinutes} 分钟 / 休息 ${config.breakMinutes} 分钟`
     );
   }
 

@@ -1,5 +1,10 @@
 import { el, clearElement, setText } from '../lib/dom.js';
 import { createButton, createIconButton } from '../lib/ui/index.js';
+import {
+  createCompactTopRow,
+  createStaticWidgetIcon,
+  createSummaryExtra,
+} from './summary-helpers.js';
 
 const WEEKDAYS_SUN_FIRST = ['日', '一', '二', '三', '四', '五', '六'];
 const WEEKDAYS_MON_FIRST = ['一', '二', '三', '四', '五', '六', '日'];
@@ -58,19 +63,40 @@ export function mount(root, context) {
   const daysGrid = el('div', { className: 'calendar-days-grid', role: 'grid' });
 
   const inner = el('div', { className: 'widget-inner' }, header, weekdayHead, daysGrid);
-  const compactPrimary = el('div', { className: 'widget-compact-primary', textContent: '' });
-  const compactSecondary = el('div', { className: 'widget-compact-secondary', textContent: '' });
+  const compactDayTileMonth = el('span', { className: 'compact-cal-tile-month', textContent: '' });
+  const compactDayTileNum = el('span', { className: 'compact-cal-tile-day', textContent: '' });
+  const compactDayTile = el(
+    'div',
+    { className: 'compact-cal-tile', 'aria-hidden': 'true' },
+    compactDayTileMonth,
+    compactDayTileNum
+  );
+  const compactPrimary = el('div', { className: 'widget-compact-primary compact-cal-weekday', textContent: '' });
+  const compactSecondary = el('div', { className: 'widget-compact-secondary compact-cal-sub', textContent: '' });
+  const { topRow: compactTopRow } = createCompactTopRow({
+    kickerText: '月历视图',
+    iconNode: createStaticWidgetIcon('calendar'),
+    accentClass: 'is-calendar',
+  });
+  const compactBody = el(
+    'div',
+    { className: 'compact-cal-body' },
+    compactDayTile,
+    el('div', { className: 'compact-cal-meta' }, compactPrimary, compactSecondary)
+  );
+  const summaryWeekMeta = el('div', { className: 'summary-cal-week-meta', textContent: '' });
+  const summaryWeekStrip = el('div', { className: 'summary-cal-week-strip', 'aria-label': '本周日期预览' });
+  const summaryExtra = createSummaryExtra(
+    'summary-extra-calendar',
+    summaryWeekMeta,
+    summaryWeekStrip
+  );
   const compactSummary = el(
     'div',
-    { className: 'widget-compact-summary' },
-    el(
-      'div',
-      { className: 'widget-compact-top' },
-      el('span', { className: 'widget-compact-kicker', textContent: '月历视图' }),
-      el('span', { className: 'widget-compact-badge', textContent: '详情 ↗' })
-    ),
-    compactPrimary,
-    compactSecondary
+    { className: 'widget-compact-summary compact-layout-calendar' },
+    compactTopRow,
+    compactBody,
+    summaryExtra
   );
   const label = el('span', { className: 'widget-label', textContent: '月历' });
   root.append(inner, compactSummary, label);
@@ -85,11 +111,45 @@ export function mount(root, context) {
 
     setText(monthTitle, `${viewYear}年 ${viewMonth}月`);
     setText(weekStartBtn, config.weekStartsOn === 1 ? '周一起' : '周日起');
-    setText(compactPrimary, `${today.month}月${today.day}日 · ${today.weekdayZh || ''}`);
+    setText(compactDayTileMonth, `${today.month}月`);
+    setText(compactDayTileNum, String(today.day));
+    setText(compactPrimary, today.weekdayZh || `${today.month}月${today.day}日`);
     setText(
       compactSecondary,
-      `${viewYear}年${viewMonth}月 · ${config.weekStartsOn === 1 ? '周一起始' : '周日起始'}`
+      `${today.year}年${today.month}月${today.day}日`
     );
+
+    const todayUtc = new Date(Date.UTC(today.year, today.month - 1, today.day));
+    const todayDow = todayUtc.getUTCDay(); // 0..6
+    const offsetFromWeekStart =
+      config.weekStartsOn === 1 ? (todayDow + 6) % 7 : todayDow;
+    const weekLabels = config.weekStartsOn === 1 ? WEEKDAYS_MON_FIRST : WEEKDAYS_SUN_FIRST;
+    const totalDaysThisMonth = daysInMonth(today.year, today.month);
+    const weekIndexInMonth = Math.ceil((today.day + ((firstDayWeekday(today.year, today.month) - (config.weekStartsOn === 1 ? 1 : 0) + 7) % 7)) / 7);
+    setText(
+      summaryWeekMeta,
+      `本月第 ${weekIndexInMonth} 周 · 共 ${totalDaysThisMonth} 天 · ${config.weekStartsOn === 1 ? '周一起始' : '周日起始'}`
+    );
+    clearElement(summaryWeekStrip);
+    for (let i = 0; i < 7; i++) {
+      const cellDate = new Date(Date.UTC(today.year, today.month - 1, today.day - offsetFromWeekStart + i));
+      const cellYear = cellDate.getUTCFullYear();
+      const cellMonth = cellDate.getUTCMonth() + 1;
+      const cellDay = cellDate.getUTCDate();
+      const isCurrentDay =
+        cellYear === today.year && cellMonth === today.month && cellDay === today.day;
+      const isCurrentMonth = cellMonth === today.month && cellYear === today.year;
+      summaryWeekStrip.appendChild(
+        el(
+          'div',
+          {
+            className: `summary-cal-day-pill ${isCurrentDay ? 'is-today' : ''} ${isCurrentMonth ? '' : 'is-outside'}`.trim(),
+          },
+          el('span', { className: 'summary-cal-day-dow', textContent: weekLabels[i] }),
+          el('span', { className: 'summary-cal-day-num', textContent: String(cellDay) })
+        )
+      );
+    }
 
     clearElement(weekdayHead);
     const headers = config.weekStartsOn === 1 ? WEEKDAYS_MON_FIRST : WEEKDAYS_SUN_FIRST;

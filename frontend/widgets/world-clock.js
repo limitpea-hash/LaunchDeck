@@ -5,6 +5,12 @@ import {
   createIconButton,
   createSelect,
 } from '../lib/ui/index.js';
+import {
+  createCompactTopRow,
+  createStaticWidgetIcon,
+  createSummaryExtra,
+  createSummaryScrollRegion,
+} from './summary-helpers.js';
 
 const DEFAULT_ZONES = [
   { label: '上海', timeZone: 'Asia/Shanghai' },
@@ -78,19 +84,34 @@ export function mount(root, context) {
   const listContainer = el('div', { className: 'world-clock-list' });
 
   const inner = el('div', { className: 'widget-inner' }, header, addForm, errorBanner, listContainer);
-  const compactPrimary = el('div', { className: 'widget-compact-primary', textContent: '' });
-  const compactSecondary = el('div', { className: 'widget-compact-secondary', textContent: '' });
+  const { topRow: compactTopRow } = createCompactTopRow({
+    kickerText: '世界时钟',
+    iconNode: createStaticWidgetIcon('world-clock'),
+    accentClass: 'is-world',
+  });
+  const compactRow0City = el('span', { className: 'compact-world-city', textContent: '' });
+  const compactRow0Time = el('span', { className: 'compact-world-time', textContent: '' });
+  const compactRow0 = el('div', { className: 'compact-world-row' }, compactRow0City, compactRow0Time);
+  const compactRow1City = el('span', { className: 'compact-world-city', textContent: '' });
+  const compactRow1Time = el('span', { className: 'compact-world-time', textContent: '' });
+  const compactRow1 = el('div', { className: 'compact-world-row' }, compactRow1City, compactRow1Time);
+  const compactRows = el('div', { className: 'compact-world-rows' }, compactRow0, compactRow1);
+  const summaryWorldMeta = el('div', { className: 'summary-world-meta', textContent: '' });
+  const summaryWorldList = createSummaryScrollRegion({
+    ariaLabel: '世界时钟城市列表预览',
+    extraClass: 'summary-world-scroll',
+  });
+  const summaryExtra = createSummaryExtra(
+    'summary-extra-world-clock',
+    summaryWorldMeta,
+    summaryWorldList
+  );
   const compactSummary = el(
     'div',
-    { className: 'widget-compact-summary' },
-    el(
-      'div',
-      { className: 'widget-compact-top' },
-      el('span', { className: 'widget-compact-kicker', textContent: '世界时钟' }),
-      el('span', { className: 'widget-compact-badge', textContent: '详情 ↗' })
-    ),
-    compactPrimary,
-    compactSecondary
+    { className: 'widget-compact-summary compact-layout-world-clock' },
+    compactTopRow,
+    compactRows,
+    summaryExtra
   );
   const label = el('span', { className: 'widget-label', textContent: '世界时钟' });
   root.append(inner, compactSummary, label);
@@ -160,15 +181,55 @@ export function mount(root, context) {
       );
     });
 
-    const compactTokens = zones.slice(0, 3).map((z) => {
-      const p = getTimePartsInZone(baseEpoch, z.timeZone);
-      return `${z.label} ${p.timeHM}`;
-    });
-    setText(compactPrimary, compactTokens[0] || '世界时钟');
+    const topZones = zones.slice(0, 2);
+    const z0 = topZones[0];
+    if (z0) {
+      const p0 = getTimePartsInZone(baseEpoch, z0.timeZone);
+      setText(compactRow0City, z0.label);
+      setText(compactRow0Time, p0.timeHM);
+      compactRow0.hidden = false;
+    } else {
+      compactRow0.hidden = true;
+    }
+    const z1 = topZones[1];
+    if (z1) {
+      const p1 = getTimePartsInZone(baseEpoch, z1.timeZone);
+      setText(compactRow1City, z1.label);
+      setText(compactRow1Time, p1.timeHM);
+      compactRow1.hidden = false;
+    } else {
+      compactRow1.hidden = true;
+    }
+
     setText(
-      compactSecondary,
-      compactTokens.slice(1).join(' · ') || `共 ${zones.length} 个时区`
+      summaryWorldMeta,
+      `已配置 ${zones.length} 个城市 · 本地 ${snap.timeZone || 'UTC'} (${primaryParts.timeHM})`
     );
+    clearElement(summaryWorldList);
+    zones.forEach((zone) => {
+      const parts = getTimePartsInZone(baseEpoch, zone.timeZone);
+      const offsetMins = getZoneOffsetMinutes(baseEpoch, zone.timeZone);
+      const diffHours = (offsetMins - primaryOffsetMins) / 60;
+      const diffSign = diffHours > 0 ? `+${diffHours}h` : `${diffHours}h`;
+      let dayTag = '同日';
+      if (parts.isoDate > primaryParts.isoDate) dayTag = '次日';
+      else if (parts.isoDate < primaryParts.isoDate) dayTag = '前日';
+      const offsetLabel = diffHours === 0 ? `${dayTag} · 本地` : `${dayTag} · ${diffSign}`;
+
+      summaryWorldList.appendChild(
+        el(
+          'div',
+          { className: 'summary-world-item' },
+          el(
+            'div',
+            { className: 'summary-world-item-left' },
+            el('span', { className: 'summary-world-city', textContent: zone.label }),
+            el('span', { className: 'summary-world-diff', textContent: offsetLabel })
+          ),
+          el('span', { className: 'summary-world-time', textContent: parts.timeHM })
+        )
+      );
+    });
   }
 
   const onToggleEdit = (e) => {

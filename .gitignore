@@ -5,7 +5,10 @@ data/
 !.env.example
 !.env.sample
 .DS_Store
-backend/extension/dist/
+
+# Generated extension builds and local backup exports.
+/releases/
+/backend/extension/dist/
 
 # Local collaboration history and superseded proposals contain workstation paths.
 /TASK.md

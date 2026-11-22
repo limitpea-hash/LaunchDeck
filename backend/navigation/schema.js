@@ -1,6 +1,6 @@
 import { validatePatch } from '../validation.js';
 import { record, check, identifier } from '../features/schema.js';
-import { validateDesktop, widgetDefinitions } from '../features/widgets.js';
+import { validateDesktop, validateWidgetSize, widgetDefinitions } from '../features/widgets.js';
 
 export const MAX_NAVIGATION_BYTES = 1024 * 1024;
 export const SYSTEM_SITE_PAGES = ['ai', 'design', 'dev', 'media'];
@@ -40,9 +40,10 @@ export function validateNavigationBackup(value) {
   check(value.desktop?.schemaVersion === 2 && Array.isArray(value.desktop.placements), '导航备份必须使用文件夹布局v2');
   const placedWidgets = new Set(value.desktop.placements.filter(p => p?.kind === 'widget').map(p => p.id));
   const layout = value.widgetSlots.map((slot, order) => {
-    record(slot, ['id', 'type'], '组件位置标识'); identifier(slot.id);
+    record(slot, ['id', 'type', 'size'], '组件位置标识'); identifier(slot.id);
     const definition = widgetDefinitions.find(d => d.type === slot.type);
     check(definition && !widgetIds.has(slot.id), '组件类型未知或ID重复'); widgetIds.add(slot.id);
+    validateWidgetSize(slot, definition);
     return { id: slot.id, type: slot.type, order, enabled: placedWidgets.has(slot.id), config: definition.defaultConfig };
   });
   check(value.desktop?.schemaVersion === 2, '导航备份必须使用文件夹布局v2');
@@ -76,7 +77,7 @@ export function createNavigationBackup({ sites, pages, desktop, layout }) {
     desktop: { schemaVersion: 2, pages: structuredClone(cleanPages),
       placements: (desktop.placements || []).map(p => pick(p, ['kind', 'id', 'pageId', 'order'])),
       folders: (desktop.folders || []).map(f => pick(f, ['id', 'title', 'siteIds'])) },
-    widgetSlots: layout.map(slot => pick(slot, ['id', 'type'])),
+    widgetSlots: layout.map(slot => pick(slot, ['id', 'type', 'size'])),
   };
   return validateNavigationBackup(value);
 }

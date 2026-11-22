@@ -45,9 +45,10 @@ function validatePrefs(prefs) {
   check(['small', 'large'].includes(prefs.iconSize), '图标尺寸不正确');
   check(['ios18-bloom', 'ios18-pink', 'ios18-teal', 'sequoia-gold', 'titanium-dark'].includes(prefs.wallpaper), '壁纸不正确');
   check(typeof prefs.wallpaperDimmed === 'boolean' && typeof prefs.focusActive === 'boolean', '外观开关格式不正确');
+  if (Object.hasOwn(prefs, 'nightMode')) check(typeof prefs.nightMode === 'boolean', '夜间模式必须为布尔值');
   check(Number.isInteger(prefs.tintHue) && prefs.tintHue >= 0 && prefs.tintHue <= 360, '色相必须为 0–360');
   check(Number.isInteger(prefs.tintSat) && prefs.tintSat >= 25 && prefs.tintSat <= 100, '浓度必须为 25–100');
-  check(Object.keys(prefs).every(key => ['iconMode', 'iconSize', 'wallpaper', 'wallpaperDimmed', 'tintHue', 'tintSat', 'focusActive'].includes(key)), '外观设置包含未知字段');
+  check(Object.keys(prefs).every(key => ['iconMode', 'iconSize', 'wallpaper', 'wallpaperDimmed', 'tintHue', 'tintSat', 'focusActive', 'nightMode'].includes(key)), '外观设置包含未知字段');
 }
 
 export function validatePatch(patch, initial = false) {

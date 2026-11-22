@@ -9,6 +9,8 @@ import {
 import {
   createFeatureClient,
   DEFAULT_WIDGET_DEFINITIONS,
+  getSupportedSizesForWidgetType,
+  normalizeWidgetSize,
   createDefaultWidgetState,
   normalizeWidgetState,
   createDefaultDeviceSettings,
@@ -18,6 +20,8 @@ import {
   normalizeWidgetLayout,
   reconcileDesktopWithLayout,
   migrateLegacyDesktop,
+  doesDesktopMatchLegacyDefaultSnapshot,
+  stripDefaultSitePlacementsFromHomePage,
   getPagePlacements,
   getFolderById,
   getRenderablePageItems,
@@ -64,6 +68,8 @@ import {
   isMobileViewport,
   resolveEffectiveDisplayMode,
   computeSingleScreenMetrics,
+  resolveWidgetDisplaySize,
+  getWidgetGridSpan,
   packCategoryItemsIntoViews,
   buildScreenViewsModel,
   resolveViewDropBeforeAnchor,
@@ -80,6 +86,7 @@ const STORAGE_KEYS = {
   SITES: 'ios18_nav_sites_v1',
   PREFS: 'ios18_nav_prefs_v1',
   NOTE: 'ios18_nav_quicknote_v1',
+  SEARCH_ENGINE: 'ios18_nav_search_engine_v1',
 };
 
 const LEGACY_V2_KEYS = {
@@ -461,6 +468,12 @@ const DEFAULT_NOTE =
 const clockController = createClockController();
 const featureClient = createFeatureClient();
 
+const WIDGET_SIZE_OPTIONS = Object.freeze([
+  { value: 'compact', shortLabel: '2×1', label: '紧凑', ariaLabel: '紧凑尺寸 (2列×1行)' },
+  { value: 'square', shortLabel: '2×2', label: '方卡', ariaLabel: '方卡尺寸 (2列×2行)' },
+  { value: 'wide', shortLabel: '4×2', label: '横卡', ariaLabel: '横卡尺寸 (4列×2行)' },
+]);
+
 const state = {
   pages: [],
   sites: [],
@@ -491,6 +504,7 @@ const state = {
     tintHue: 215,
     tintSat: 82,
     focusActive: false,
+    nightMode: false,
   },
   widgetRegistry: structuredClone(DEFAULT_WIDGET_DEFINITIONS),
   widgetState: createDefaultWidgetState(),
@@ -580,6 +594,7 @@ function getBackendSyncablePrefs(prefsObj = state.prefs) {
     tintHue: Math.min(360, Math.max(0, Math.round(Number(prefsObj.tintHue) || 215))),
     tintSat: Math.min(100, Math.max(25, Math.round(Number(prefsObj.tintSat) || 82))),
     focusActive: Boolean(prefsObj.focusActive),
+    nightMode: Boolean(prefsObj.nightMode),
   };
 }
 
@@ -610,6 +625,9 @@ const BLANK_EXIT_EXCLUDED_SELECTOR = [
   '.ios-widget',
   '.card-edit-actions',
   '.card-edit-btn',
+  '.widget-size-controls',
+  '.widget-size-btn',
+  '.widget-summary-scroll',
   '.move-page-popover',
   '.empty-page-dropzone',
   'input',
@@ -638,11 +656,51 @@ const BLANK_EXIT_EXCLUDED_SELECTOR = [
   'dialog',
 ].join(', ');
 
+const DEFAULT_SITE_IDS = Object.freeze(DEFAULT_SITES.map((s) => s.id));
+
+function buildInitialDesktopLayout({
+  pages = state.pages,
+  sites = state.sites,
+  layout = state.widgetState?.layout,
+  definitions = state.widgetRegistry,
+} = {}) {
+  return migrateLegacyDesktop({
+    pages,
+    sites,
+    layout,
+    definitions,
+    omitHomeSiteIds: DEFAULT_SITE_IDS,
+  });
+}
+
+function hasUnsyncedWidgetLayoutInStorage() {
+  try {
+    const rawOutbox = localStorage.getItem('ios18_widgets_outbox_v1');
+    if (!rawOutbox) return false;
+    const parsed = JSON.parse(rawOutbox);
+    if (!parsed || typeof parsed !== 'object') return false;
+    if (parsed.blocked) return true;
+    const patch = parsed.patch;
+    return Boolean(patch && typeof patch === 'object' && Object.keys(patch).length > 0);
+  } catch {
+    return false;
+  }
+}
+
+function hasKnownNavigationRestoreMarker() {
+  try {
+    const marker = localStorage.getItem(NAVIGATION_RESTORE_ID_STORAGE_KEY);
+    return Boolean(typeof marker === 'string' && marker.trim());
+  } catch {
+    return false;
+  }
+}
+
 function getEffectiveDesktopForRender() {
   if (state.widgetState?.desktop && Array.isArray(state.widgetState.desktop.pages)) {
     return state.widgetState.desktop;
   }
-  return migrateLegacyDesktop({
+  return buildInitialDesktopLayout({
     pages: state.pages,
     sites: state.sites,
     layout: state.widgetState?.layout,
@@ -655,11 +713,31 @@ function finalizeDesktopMigrationOrReconcile(rawWidgetState, registry, { persist
   const normalized = normalizeWidgetStateWithRegistry(rawWidgetState, defs);
 
   if (normalized.desktop && typeof normalized.desktop === 'object') {
-    const reconciled = reconcileDesktopWithLayout(normalized.desktop, normalized.layout, {
+    let reconciled = reconcileDesktopWithLayout(normalized.desktop, normalized.layout, {
       fallbackPages: state.pages,
       definitions: defs,
     });
+
+    const matchesLegacyDefault = doesDesktopMatchLegacyDefaultSnapshot(reconciled.desktop, {
+      pages: state.pages,
+      sites: state.sites,
+      defaultPages: DEFAULT_PAGES,
+      defaultSites: DEFAULT_SITES,
+      definitions: defs,
+      hasUnsyncedLayout: hasUnsyncedWidgetLayoutInStorage(),
+      hasRestoreMarker: hasKnownNavigationRestoreMarker(),
+    });
+
+    if (matchesLegacyDefault) {
+      reconciled = stripDefaultSitePlacementsFromHomePage(reconciled.desktop, reconciled.layout, {
+        defaultSites: DEFAULT_SITES,
+        fallbackPages: state.pages,
+        definitions: defs,
+      });
+    }
+
     const changed =
+      matchesLegacyDefault ||
       JSON.stringify(reconciled.desktop) !== JSON.stringify(normalized.desktop) ||
       JSON.stringify(reconciled.layout) !== JSON.stringify(normalized.layout);
 
@@ -681,7 +759,7 @@ function finalizeDesktopMigrationOrReconcile(rawWidgetState, registry, { persist
   }
 
   // Legacy data migration (executed once after both sites & widgets have finished loading)
-  const migrated = migrateLegacyDesktop({
+  const migrated = buildInitialDesktopLayout({
     pages: state.pages,
     sites: state.sites,
     layout: normalized.layout,
@@ -825,7 +903,12 @@ async function bootstrapApp() {
         writeLocalStorage(STORAGE_KEYS.SITES, JSON.stringify(state.sites));
       }
       if (remoteState.prefs && typeof remoteState.prefs === 'object') {
-        state.prefs = { ...state.prefs, ...remoteState.prefs };
+        state.prefs = {
+          ...state.prefs,
+          ...remoteState.prefs,
+          nightMode: Boolean(remoteState.prefs.nightMode),
+          focusActive: Boolean(remoteState.prefs.focusActive),
+        };
         writeLocalStorage(STORAGE_KEYS.PREFS, JSON.stringify(state.prefs));
       }
       if (typeof remoteState.note === 'string') {
@@ -991,7 +1074,12 @@ function loadStateFromStorage() {
     if (savedPrefs !== null) {
       const parsedPrefs = JSON.parse(savedPrefs);
       if (parsedPrefs && typeof parsedPrefs === 'object') {
-        state.prefs = { ...state.prefs, ...parsedPrefs };
+        state.prefs = {
+          ...state.prefs,
+          ...parsedPrefs,
+          nightMode: Boolean(parsedPrefs.nightMode),
+          focusActive: Boolean(parsedPrefs.focusActive),
+        };
       }
     }
 
@@ -1051,10 +1139,13 @@ function saveNoteToStorage(noteText, syncToBackend = true) {
 // Apply iOS 18 Appearance Preferences
 // ==========================================================================
 function applyPreferencesToDOM() {
-  const { iconMode, iconSize, wallpaper, wallpaperDimmed, tintHue, tintSat, focusActive } = state.prefs;
+  const { iconMode, iconSize, wallpaper, wallpaperDimmed, tintHue, tintSat, nightMode } = state.prefs;
+  const isNight = Boolean(nightMode);
   document.body.setAttribute('data-icon-mode', iconMode);
   document.body.setAttribute('data-icon-size', iconSize);
   document.body.setAttribute('data-wallpaper', wallpaper);
+  document.body.setAttribute('data-night-mode', isNight ? 'true' : 'false');
+  document.body.classList.toggle('night-mode', isNight);
   document.body.classList.toggle('wallpaper-dimmed', Boolean(wallpaperDimmed));
 
   document.documentElement.style.setProperty('--tint-h', tintHue);
@@ -1083,9 +1174,20 @@ function applyPreferencesToDOM() {
 
   const focusBtn = document.getElementById('focusModeToggle');
   const focusLabel = document.getElementById('focusLabel');
-  if (focusBtn && focusLabel) {
-    focusBtn.classList.toggle('focus-active', Boolean(focusActive));
-    setText(focusLabel, focusActive ? '专注中 · 勿扰' : '个人专注');
+  const moonIcon = document.getElementById('nightModeMoonIcon');
+  const sunIcon = document.getElementById('nightModeSunIcon');
+  if (focusBtn) {
+    focusBtn.classList.toggle('focus-active', isNight);
+    focusBtn.classList.toggle('night-mode-active', isNight);
+    focusBtn.setAttribute('aria-pressed', isNight ? 'true' : 'false');
+    focusBtn.setAttribute('title', isNight ? '关闭夜间模式' : '开启夜间模式');
+  }
+  if (moonIcon && sunIcon) {
+    moonIcon.toggleAttribute('hidden', isNight);
+    sunIcon.toggleAttribute('hidden', !isNight);
+  }
+  if (focusLabel) {
+    setText(focusLabel, isNight ? '夜间模式 · 已开启' : '夜间模式');
   }
 }
 
@@ -1130,7 +1232,7 @@ function getViewportDimensions() {
   );
   return {
     width: Math.max(320, width),
-    height: Math.max(480, height),
+    height: Math.max(240, height),
   };
 }
 
@@ -1139,26 +1241,26 @@ function measureActualAvailableGridHeight() {
   const viewportEl = document.getElementById('springboardViewport');
   if (!viewportEl || typeof viewportEl.getBoundingClientRect !== 'function') return null;
   const viewportRect = viewportEl.getBoundingClientRect();
-  if (!viewportRect || viewportRect.height < 180) return null;
+  if (!viewportRect || viewportRect.height <= 0) return null;
 
   let viewportBottom = viewportRect.bottom;
   const paginationEl = document.querySelector('.springboard-pagination-wrap');
   if (paginationEl && typeof paginationEl.getBoundingClientRect === 'function') {
     const pagRect = paginationEl.getBoundingClientRect();
-    if (pagRect.top > viewportRect.top + 120) {
+    if (pagRect.height > 0 && pagRect.top > viewportRect.top + 8) {
       viewportBottom = Math.min(viewportBottom, pagRect.top - 2);
     }
   }
   const dockEl = document.getElementById('iosDock');
   if (dockEl && typeof dockEl.getBoundingClientRect === 'function') {
     const dockRect = dockEl.getBoundingClientRect();
-    if (dockRect.top > viewportRect.top + 120) {
+    if (dockRect.height > 0 && dockRect.top > viewportRect.top + 8) {
       viewportBottom = Math.min(viewportBottom, dockRect.top - 6);
     }
   }
 
-  const usableViewportHeight = Math.max(0, Math.floor(viewportBottom - viewportRect.top));
-  if (usableViewportHeight < 180) return null;
+  const usableViewportHeight = Math.floor(viewportBottom - viewportRect.top);
+  if (usableViewportHeight <= 0) return null;
 
   const activePageEl =
     document.querySelector('.springboard-page.page-active') ||
@@ -1167,11 +1269,17 @@ function measureActualAvailableGridHeight() {
     const activeGridEl = activePageEl.querySelector('.apps-grid.desktop-mixed-grid');
     if (activeGridEl && typeof activeGridEl.getBoundingClientRect === 'function') {
       const gridRect = activeGridEl.getBoundingClientRect();
-      if (gridRect.top >= viewportRect.top - 4 && gridRect.height >= 160) {
+      if (gridRect.top >= viewportRect.top - 4 && gridRect.height > 0) {
+        let pagePadBottom = 2;
+        if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+          const pageStyle = window.getComputedStyle(activePageEl);
+          pagePadBottom = Math.max(2, Math.ceil(parseFloat(pageStyle.paddingBottom) || 0));
+        }
         const directGridHeight = Math.floor(
-          Math.min(viewportBottom - 2, gridRect.bottom) - gridRect.top
+          Math.min(viewportBottom - pagePadBottom, activePageEl.getBoundingClientRect().bottom - pagePadBottom) -
+            gridRect.top
         );
-        if (directGridHeight >= 180) {
+        if (directGridHeight > 0) {
           return directGridHeight;
         }
       }
@@ -1194,7 +1302,8 @@ function measureActualAvailableGridHeight() {
     );
   }
 
-  return Math.max(180, usableViewportHeight - pageChromeAllowance);
+  const fallbackAvailable = Math.floor(usableViewportHeight - pageChromeAllowance);
+  return fallbackAvailable > 0 ? fallbackAvailable : Math.max(1, usableViewportHeight);
 }
 
 function applyDisplayModeClassesAndVars(metrics) {
@@ -1379,6 +1488,13 @@ function openWidgetDetailModal(widgetEl, widgetItem) {
     className: 'ios-widget widget-detail-slot-placeholder',
     'aria-hidden': 'true',
   });
+  const currentDisplaySize =
+    widgetEl.getAttribute('data-widget-size') ||
+    resolveWidgetDisplaySize({ kind: 'widget', widget: widgetItem }, state.singleScreenMetrics);
+  placeholderNode.setAttribute('data-widget-size', currentDisplaySize);
+  const currentSpan = getWidgetGridSpan({ kind: 'widget', widget: widgetItem }, state.singleScreenMetrics);
+  placeholderNode.style.gridColumn = `span ${currentSpan.colSpan}`;
+  placeholderNode.style.gridRow = `span ${currentSpan.rowSpan}`;
   if (rect.height > 0) {
     placeholderNode.style.minHeight = `${Math.round(rect.height)}px`;
   }
@@ -2617,13 +2733,106 @@ function createFolderItemElement(
   return item;
 }
 
+function setWidgetSize(widgetId, nextSize) {
+  if (!widgetId || state.navigationImportInProgress) return false;
+  const currentLayout = Array.isArray(state.widgetState?.layout) ? state.widgetState.layout : [];
+  const target = currentLayout.find((item) => item && item.id === widgetId);
+  if (!target) return false;
+  const supported = getSupportedSizesForWidgetType(target.type, state.widgetRegistry);
+  const candidate = typeof nextSize === 'string' ? nextSize.trim().toLowerCase() : '';
+  if (!supported.includes(candidate)) {
+    return false;
+  }
+  const normalizedSize = normalizeWidgetSize(candidate, target.type, state.widgetRegistry);
+  const currentSize = normalizeWidgetSize(target.size, target.type, state.widgetRegistry);
+  if (currentSize === normalizedSize && target.size === normalizedSize) {
+    return true;
+  }
+  const nextLayout = currentLayout.map((item) =>
+    item && item.id === widgetId ? { ...item, size: normalizedSize } : item
+  );
+  commitDesktopAndLayout(getEffectiveDesktopForRender(), nextLayout);
+  return true;
+}
+
+function syncWidgetSummaryScrollRegions(root) {
+  if (!root || typeof root.querySelectorAll !== 'function') return;
+  root.querySelectorAll('.widget-summary-scroll').forEach((scrollEl) => {
+    if (!scrollEl.hasAttribute('tabindex')) {
+      scrollEl.setAttribute('tabindex', '0');
+    }
+    if (!scrollEl.hasAttribute('role')) {
+      scrollEl.setAttribute('role', 'region');
+    }
+    if (!scrollEl.hasAttribute('aria-label')) {
+      scrollEl.setAttribute('aria-label', '小组件内容滚动区域');
+    }
+    if (!scrollEl.dataset.summaryScrollBound) {
+      scrollEl.dataset.summaryScrollBound = 'true';
+      scrollEl.addEventListener(
+        'wheel',
+        (e) => {
+          if (state.jiggleMode) return;
+          e.stopPropagation();
+        },
+        { passive: true }
+      );
+      scrollEl.addEventListener('keydown', (e) => {
+        if (state.jiggleMode) return;
+        const step = 36;
+        const pageStep = Math.max(48, Math.round((scrollEl.clientHeight || 80) * 0.8));
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          e.stopPropagation();
+          scrollEl.scrollTop += step;
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          e.stopPropagation();
+          scrollEl.scrollTop -= step;
+        } else if (e.key === 'PageDown') {
+          e.preventDefault();
+          e.stopPropagation();
+          scrollEl.scrollTop += pageStep;
+        } else if (e.key === 'PageUp') {
+          e.preventDefault();
+          e.stopPropagation();
+          scrollEl.scrollTop -= pageStep;
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          e.stopPropagation();
+          scrollEl.scrollTop = 0;
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          e.stopPropagation();
+          scrollEl.scrollTop = scrollEl.scrollHeight;
+        }
+      });
+    }
+  });
+}
+
 function decorateWidgetCardForDesktop(
   root,
   widgetItem,
-  { pageId, viewId = null, itemIndex = 0, totalItems = 1 }
+  { pageId, viewId = null, entry = null, itemIndex = 0, totalItems = 1 }
 ) {
   const def = state.widgetRegistry.find((d) => d.type === widgetItem.type);
   const title = def?.title || widgetItem.type;
+  const supportedSizes = getSupportedSizesForWidgetType(widgetItem.type, state.widgetRegistry);
+  const selectedSize = normalizeWidgetSize(widgetItem.size, widgetItem.type, state.widgetRegistry);
+  const entryForMeasure =
+    entry && entry.kind === 'widget' && entry.widget ? entry : { kind: 'widget', widget: widgetItem };
+  const resolvedDisplaySize = resolveWidgetDisplaySize(entryForMeasure, state.singleScreenMetrics);
+  const resolvedSpan = getWidgetGridSpan(entryForMeasure, state.singleScreenMetrics);
+
+  root._latestWidgetItem = widgetItem;
+  root._latestWidgetEntry = entryForMeasure;
+  root.setAttribute('data-widget-size', resolvedDisplaySize);
+  root.setAttribute('data-widget-selected-size', selectedSize);
+  root.dataset.widgetSize = resolvedDisplaySize;
+  root.dataset.widgetSelectedSize = selectedSize;
+  root.dataset.colSpan = String(resolvedSpan.colSpan);
+  root.dataset.rowSpan = String(resolvedSpan.rowSpan);
 
   const randomDelay = ((itemIndex % 5) * -0.05).toFixed(3);
   root.style.setProperty('--jiggle-delay', `${randomDelay}s`);
@@ -2648,19 +2857,168 @@ function decorateWidgetCardForDesktop(
     e.stopPropagation();
     if (!state.jiggleMode) return;
     gestureBlockBlankExit = true;
-    removeWidgetFromDesktop(widgetItem.id);
+    const latest = root._latestWidgetItem || widgetItem;
+    removeWidgetFromDesktop(latest.id);
   });
 
-  root.prepend(delBtn);
-  root._latestWidgetItem = widgetItem;
+  const sizeControls = el('div', {
+    className: 'widget-size-controls',
+    role: 'group',
+    'aria-label': `${title} 尺寸选择`,
+    dataset: {
+      widgetId: widgetItem.id,
+      selectedSize,
+      displaySize: resolvedDisplaySize,
+    },
+  });
+
+  for (const opt of WIDGET_SIZE_OPTIONS) {
+    if (!supportedSizes.includes(opt.value)) continue;
+    const isSelected = selectedSize === opt.value;
+    const sizeBtn = el(
+      'button',
+      {
+        type: 'button',
+        className: `card-edit-btn widget-size-btn ${isSelected ? 'active is-selected' : ''}`,
+        disabled: !state.jiggleMode,
+        'aria-pressed': isSelected ? 'true' : 'false',
+        'aria-label': `${title}切换为${opt.ariaLabel}`,
+        title: `${title} · ${opt.ariaLabel}`,
+        dataset: {
+          widgetSizeOption: opt.value,
+          size: opt.value,
+          widgetId: widgetItem.id,
+        },
+      },
+      el('span', { className: 'widget-size-btn-label', textContent: opt.label }),
+      el('span', { className: 'widget-size-btn-spec', textContent: opt.shortLabel })
+    );
+
+    sizeBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      clearActiveLongPress();
+      gestureBlockBlankExit = true;
+    });
+
+    sizeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.jiggleMode) return;
+      gestureBlockBlankExit = true;
+      const latest = root._latestWidgetItem || widgetItem;
+      setWidgetSize(latest.id, opt.value);
+    });
+
+    sizeBtn.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (!state.jiggleMode) return;
+        gestureBlockBlankExit = true;
+        const latest = root._latestWidgetItem || widgetItem;
+        setWidgetSize(latest.id, opt.value);
+      }
+    });
+
+    sizeControls.appendChild(sizeBtn);
+  }
+
+  const editActionsBar = el(
+    'div',
+    {
+      className: 'card-edit-actions widget-card-edit-actions',
+      role: 'toolbar',
+      'aria-label': `${title} 编辑操作`,
+    },
+    sizeControls
+  );
+
+  editActionsBar.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    clearActiveLongPress();
+    gestureBlockBlankExit = true;
+  });
+
+  editActionsBar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    gestureBlockBlankExit = true;
+  });
+
+  root.prepend(delBtn, editActionsBar);
+  syncWidgetSummaryScrollRegions(root);
 
   // Shield internal widget forms/links/buttons from interfering when in edit mode,
   // and open detail modal when clicking/pressing Enter on summary widget in normal mode
   if (!root.dataset.editShieldBound) {
     root.dataset.editShieldBound = 'true';
+    let scrollPointerStart = null;
+    let scrollMoved = false;
+    let suppressDetailOpenUntil = 0;
+
+    root.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (state.jiggleMode) return;
+        const scrollZone = e.target.closest?.('.widget-summary-scroll');
+        if (!scrollZone) {
+          scrollPointerStart = null;
+          scrollMoved = false;
+          return;
+        }
+        scrollPointerStart = {
+          pointerId: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          scrollTop: scrollZone.scrollTop,
+          scrollLeft: scrollZone.scrollLeft,
+          scrollZone,
+        };
+        scrollMoved = false;
+      },
+      true
+    );
+
+    root.addEventListener(
+      'pointermove',
+      (e) => {
+        if (!scrollPointerStart || e.pointerId !== scrollPointerStart.pointerId) return;
+        const dist = Math.hypot(
+          e.clientX - scrollPointerStart.x,
+          e.clientY - scrollPointerStart.y
+        );
+        const scrollDelta =
+          Math.abs((scrollPointerStart.scrollZone?.scrollTop || 0) - scrollPointerStart.scrollTop) +
+          Math.abs((scrollPointerStart.scrollZone?.scrollLeft || 0) - scrollPointerStart.scrollLeft);
+        if (dist >= 6 || scrollDelta >= 2) {
+          scrollMoved = true;
+          suppressDetailOpenUntil = performance.now() + 360;
+          clearActiveLongPress();
+        }
+      },
+      { capture: true, passive: true }
+    );
+
+    root.addEventListener(
+      'scroll',
+      (e) => {
+        if (e.target && e.target.classList?.contains('widget-summary-scroll')) {
+          scrollMoved = true;
+          suppressDetailOpenUntil = performance.now() + 360;
+          clearActiveLongPress();
+        }
+      },
+      true
+    );
+
     const shieldEventInEditMode = (e) => {
       if (!state.jiggleMode) return;
-      if (e.target.closest('.delete-badge, .card-edit-actions')) return;
+      if (
+        e.target.closest(
+          '.delete-badge, .card-edit-actions, .card-edit-btn, .widget-size-controls, .widget-size-btn'
+        )
+      ) {
+        return;
+      }
       if (e.target.closest('.widget-inner, .widget-compact-summary')) {
         e.preventDefault();
         e.stopPropagation();
@@ -2674,9 +3032,19 @@ function decorateWidgetCardForDesktop(
       if (root.classList.contains('widget-in-detail-modal')) return;
       if (
         e.target.closest(
-          '.delete-badge, .card-edit-actions, .card-edit-btn, .move-page-popover'
+          '.delete-badge, .card-edit-actions, .card-edit-btn, .widget-size-controls, .widget-size-btn, .move-page-popover'
         )
       ) {
+        return;
+      }
+      if (scrollMoved || (suppressDetailOpenUntil > 0 && performance.now() < suppressDetailOpenUntil)) {
+        scrollMoved = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (e.target.closest('.widget-summary-scroll')) {
+        e.stopPropagation();
         return;
       }
       e.preventDefault();
@@ -2900,6 +3268,7 @@ function renderSpringBoardTrack({ preserveCategoryPageId = null } = {}) {
               decorateWidgetCardForDesktop(root, widgetItem, {
                 pageId: page.id,
                 viewId: view.viewId,
+                entry,
                 itemIndex: effectiveIdx,
                 totalItems: totalCategoryItems,
               });
@@ -2984,6 +3353,7 @@ function renderSpringBoardTrack({ preserveCategoryPageId = null } = {}) {
                 decorateWidgetCardForDesktop(root, widgetItem, {
                   pageId: view.pageId,
                   viewId: view.viewId,
+                  entry,
                   itemIndex: effectiveIdx,
                   totalItems: totalCategoryItems,
                 });
@@ -3293,7 +3663,7 @@ function initSwipePageTurnGestures() {
     // Exclude interactive form inputs, popovers, pagination dots, and card edit buttons.
     if (
       e.target.closest(
-        'input, textarea, select, label, .ui-popover-portal, .ui-select-wrap, .ui-datetime-field, .ui-switch-wrap, .ui-checkbox-wrap, .delete-badge, .card-edit-actions, .springboard-pagination-wrap, .page-overflow-view-all-btn'
+        'input, textarea, select, label, .ui-popover-portal, .ui-select-wrap, .ui-datetime-field, .ui-switch-wrap, .ui-checkbox-wrap, .delete-badge, .card-edit-actions, .widget-summary-scroll, .springboard-pagination-wrap, .page-overflow-view-all-btn'
       )
     ) {
       return;
@@ -3503,7 +3873,7 @@ function initSwipePageTurnGestures() {
     'wheel',
     (e) => {
       if (wheelCooldown) return;
-      if (e.target.closest('.widgets-bento')) return;
+      if (e.target.closest('.widgets-bento, .widget-summary-scroll')) return;
       if (Math.abs(e.deltaX) > 32 && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.35) {
         wheelCooldown = true;
         if (e.deltaX > 0) {
@@ -3751,7 +4121,7 @@ function initStatusBarClock() {
   const focusToggle = document.getElementById('focusModeToggle');
   if (focusToggle) {
     focusToggle.addEventListener('click', () => {
-      state.prefs.focusActive = !state.prefs.focusActive;
+      state.prefs.nightMode = !Boolean(state.prefs.nightMode);
       savePrefsToStorage();
       applyPreferencesToDOM();
     });
@@ -3827,8 +4197,20 @@ function initSpotlightAndEngines() {
   const island = document.getElementById('dynamicIsland');
   const islandSettingsBtn = document.getElementById('openSettingsFromIslandBtn');
 
+  const googleIdx = Math.max(
+    0,
+    SEARCH_ENGINES.findIndex((item) => item.id === 'google')
+  );
+  try {
+    const savedEngineId = localStorage.getItem(STORAGE_KEYS.SEARCH_ENGINE);
+    const savedIdx = SEARCH_ENGINES.findIndex((item) => item.id === savedEngineId);
+    state.engineIndex = savedIdx !== -1 ? savedIdx : googleIdx;
+  } catch {
+    state.engineIndex = googleIdx;
+  }
+
   function syncEngineUI() {
-    const eng = SEARCH_ENGINES[state.engineIndex];
+    const eng = SEARCH_ENGINES[state.engineIndex] || SEARCH_ENGINES[googleIdx];
     const badge = document.getElementById('currentEngineBadge');
     const name = document.getElementById('currentEngineName');
     if (badge) {
@@ -3836,6 +4218,8 @@ function initSpotlightAndEngines() {
       badge.style.background = eng.color;
     }
     if (name) setText(name, eng.name);
+    const emptyEngName = document.getElementById('emptyEngineName');
+    if (emptyEngName) setText(emptyEngName, eng.name);
 
     if (popover) {
       clearElement(popover);
@@ -3852,14 +4236,24 @@ function initSpotlightAndEngines() {
           el('span', { className: 'engine-option-url', textContent: item.domain })
         );
         opt.addEventListener('click', () => {
-          state.engineIndex = idx;
-          syncEngineUI();
+          selectEngine(idx);
           popover.hidden = true;
           input?.focus();
         });
         popover.appendChild(opt);
       });
     }
+  }
+
+  function selectEngine(nextIndex) {
+    const validIdx =
+      Number.isInteger(nextIndex) && nextIndex >= 0 && nextIndex < SEARCH_ENGINES.length
+        ? nextIndex
+        : googleIdx;
+    state.engineIndex = validIdx;
+    const selected = SEARCH_ENGINES[state.engineIndex] || SEARCH_ENGINES[googleIdx];
+    writeLocalStorage(STORAGE_KEYS.SEARCH_ENGINE, selected.id);
+    syncEngineUI();
   }
 
   syncEngineUI();
@@ -3881,8 +4275,7 @@ function initSpotlightAndEngines() {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Tab') {
         e.preventDefault();
-        state.engineIndex = (state.engineIndex + 1) % SEARCH_ENGINES.length;
-        syncEngineUI();
+        selectEngine((state.engineIndex + 1) % SEARCH_ENGINES.length);
       } else if (e.key === 'Enter') {
         e.preventDefault();
         triggerExternalSearch();
@@ -4140,7 +4533,7 @@ const navigationBackupController = createNavigationBackupController({
     const desktopSnapshot =
       state.widgetState?.desktop && Array.isArray(state.widgetState.desktop.pages)
         ? structuredClone(state.widgetState.desktop)
-        : migrateLegacyDesktop({
+        : buildInitialDesktopLayout({
             pages: structuredClone(state.pages),
             sites: structuredClone(state.sites),
             layout: structuredClone(layoutSnapshot),
@@ -4315,9 +4708,10 @@ function initCustomizeSheet() {
         tintHue: 215,
         tintSat: 82,
         focusActive: false,
+        nightMode: false,
       };
       const defaultWidgetState = createDefaultWidgetState();
-      const migrated = migrateLegacyDesktop({
+      const migrated = buildInitialDesktopLayout({
         pages: state.pages,
         sites: state.sites,
         layout: defaultWidgetState.layout,
@@ -5622,7 +6016,7 @@ function setJiggleMode(enabled) {
   document.querySelectorAll('.app-item, .ios-widget').forEach((elNode) => {
     elNode.draggable = state.jiggleMode;
   });
-  document.querySelectorAll('.delete-badge').forEach((btn) => {
+  document.querySelectorAll('.delete-badge, .widget-size-btn').forEach((btn) => {
     btn.disabled = !state.jiggleMode;
   });
   const openAddBtn = document.getElementById('openAddModalBtn');

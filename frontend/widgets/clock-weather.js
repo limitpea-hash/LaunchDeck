@@ -1,5 +1,11 @@
 import { el, clearElement, setText } from '../lib/dom.js';
 import { getTimePartsInZone } from '../lib/time.js';
+import {
+  createCompactTopRow,
+  createSummaryExtra,
+  createWeatherGlyph,
+  resolveWeatherVisualKind,
+} from './summary-helpers.js';
 
 const SOURCE_LABELS = new Map([
   ['manual', '手动城市'],
@@ -122,19 +128,63 @@ export function mount(root, context) {
   );
 
   const inner = el('div', { className: 'widget-inner' }, clockColumn, weatherMeta);
-  const compactPrimary = el('div', { className: 'widget-compact-primary', textContent: '--:-- · --°' });
-  const compactSecondary = el('div', { className: 'widget-compact-secondary', textContent: '时钟与天气' });
+  const compactTimeEl = el('span', { className: 'compact-cw-time', textContent: '--:--' });
+  const compactTempEl = el('span', { className: 'compact-cw-temp', textContent: '--°' });
+  const compactPrimary = el(
+    'div',
+    { className: 'widget-compact-primary compact-cw-row' },
+    compactTimeEl,
+    compactTempEl
+  );
+  const compactCityEl = el('span', { className: 'compact-cw-city', textContent: '未定城市' });
+  const compactCondEl = el('span', { className: 'compact-cw-cond', textContent: '时钟与天气' });
+  const compactSecondary = el(
+    'div',
+    { className: 'widget-compact-secondary compact-cw-meta' },
+    compactCityEl,
+    el('span', { className: 'compact-cw-dot', 'aria-hidden': 'true', textContent: '·' }),
+    compactCondEl
+  );
+  let lastWeatherVisualKind = '';
+  const { topRow: compactTopRow, iconWrap: compactWeatherIconWrap } = createCompactTopRow({
+    kickerText: '时钟与天气',
+    iconNode: createWeatherGlyph('clear-day'),
+    accentClass: 'is-weather',
+  });
+  const extraRangeEl = el('div', { className: 'summary-cw-range', textContent: '最高 --° · 最低 --°' });
+  const extraFeelChip = el('span', { className: 'summary-cw-chip is-feel', textContent: '体感 --°' });
+  const extraHumidChip = el('span', { className: 'summary-cw-chip is-humidity', textContent: '湿度 --%' });
+  const extraWindChip = el('span', { className: 'summary-cw-chip is-wind', textContent: '风速 -- km/h' });
+  const extraMetricsRow = el(
+    'div',
+    { className: 'summary-cw-metrics' },
+    extraFeelChip,
+    extraHumidChip,
+    extraWindChip
+  );
+  const extraZoneEl = el('span', { className: 'summary-cw-zone', textContent: 'UTC' });
+  const extraStatusEl = el('span', { className: 'summary-cw-status', textContent: '等待实况更新' });
+  const extraGreetingEl = el('div', { className: 'summary-cw-greeting', textContent: '' });
+  const extraFooterRow = el(
+    'div',
+    { className: 'summary-cw-footer' },
+    extraZoneEl,
+    extraStatusEl
+  );
+  const summaryExtra = createSummaryExtra(
+    'summary-extra-clock-weather',
+    extraRangeEl,
+    extraMetricsRow,
+    extraFooterRow,
+    extraGreetingEl
+  );
   const compactSummary = el(
     'div',
-    { className: 'widget-compact-summary' },
-    el(
-      'div',
-      { className: 'widget-compact-top' },
-      el('span', { className: 'widget-compact-kicker', textContent: '时钟与天气' }),
-      el('span', { className: 'widget-compact-badge', textContent: '详情 ↗' })
-    ),
+    { className: 'widget-compact-summary compact-layout-clock-weather' },
+    compactTopRow,
     compactPrimary,
-    compactSecondary
+    compactSecondary,
+    summaryExtra
   );
   const label = el('span', { className: 'widget-label', textContent: '时钟与天气' });
   root.append(inner, compactSummary, label);
@@ -201,9 +251,79 @@ export function mount(root, context) {
     const condStr =
       currentWeather?.condition ||
       currentWeather?.conditionLabel ||
-      (latestEnv?.weatherLoading ? '查询中' : '点击查看详情');
-    setText(compactPrimary, `${timeStr} · ${tempStr}`);
-    setText(compactSecondary, `${locName} · ${condStr}`);
+      (latestEnv?.weatherLoading ? '查询中' : '实况待定');
+    const isDay =
+      typeof currentWeather?.isDay === 'boolean'
+        ? currentWeather.isDay
+        : snap.parts.hour >= 6 && snap.parts.hour < 18;
+    const visualKind = resolveWeatherVisualKind(
+      currentWeather?.weatherCode ?? currentWeather?.code,
+      isDay
+    );
+    if (visualKind !== lastWeatherVisualKind) {
+      lastWeatherVisualKind = visualKind;
+      clearElement(compactWeatherIconWrap);
+      compactWeatherIconWrap.appendChild(createWeatherGlyph(visualKind));
+      compactWeatherIconWrap.dataset.weatherKind = visualKind;
+      compactSummary.dataset.dayPhase = isDay ? 'day' : 'night';
+    }
+    setText(compactTimeEl, timeStr);
+    setText(compactTempEl, tempStr);
+    setText(compactCityEl, locName);
+    setText(compactCondEl, condStr);
+
+    const daily = weather?.daily;
+    if (
+      daily &&
+      typeof daily.maxTemperature === 'number' &&
+      typeof daily.minTemperature === 'number'
+    ) {
+      setText(
+        extraRangeEl,
+        `${condStr} · 最高 ${Math.round(daily.maxTemperature)}° / 最低 ${Math.round(daily.minTemperature)}°`
+      );
+    } else {
+      setText(extraRangeEl, `${condStr} · 最高 --° / 最低 --°`);
+    }
+
+    if (currentWeather && typeof currentWeather.apparentTemperature === 'number') {
+      setText(extraFeelChip, `体感 ${Math.round(currentWeather.apparentTemperature)}${unitSymbol}`);
+    } else {
+      setText(extraFeelChip, '体感 --°');
+    }
+
+    if (currentWeather && typeof currentWeather.humidity === 'number') {
+      setText(extraHumidChip, `湿度 ${Math.round(currentWeather.humidity)}%`);
+    } else {
+      setText(extraHumidChip, '湿度 --%');
+    }
+
+    if (currentWeather && typeof currentWeather.windSpeedKmh === 'number') {
+      setText(extraWindChip, `风速 ${Math.round(currentWeather.windSpeedKmh)} km/h`);
+    } else {
+      setText(extraWindChip, '风速 -- km/h');
+    }
+
+    const modeTag = snap.mode === 'manual' ? '手动校时' : snap.timeZone || 'UTC';
+    const dateTag =
+      snap.parts.month && snap.parts.day
+        ? `${snap.parts.month}月${snap.parts.day}日 ${snap.parts.weekdayZh || ''}`.trim()
+        : modeTag;
+    setText(extraZoneEl, `${dateTag} · ${modeTag}`);
+
+    const sourceLabel = latestEnv?.location?.source
+      ? SOURCE_LABELS.get(latestEnv.location.source) || '已定位'
+      : '待定位';
+    if (weather?.cache?.stale) {
+      setText(extraStatusEl, `${sourceLabel} · 缓存实况`);
+    } else if (currentWeather) {
+      setText(extraStatusEl, `${sourceLabel} · 实时天气`);
+    } else if (latestEnv?.weatherLoading) {
+      setText(extraStatusEl, `${sourceLabel} · 正在同步`);
+    } else {
+      setText(extraStatusEl, `${sourceLabel} · 暂无实况`);
+    }
+    setText(extraGreetingEl, formatGreeting(snap.parts.hour));
   }
 
   function renderWeatherAndLocation() {

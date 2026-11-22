@@ -253,14 +253,20 @@ export function createDesktopPointerDragController({
 
   function createPlaceholderForCard(cardEl, kind, rect) {
     const isWidget = kind === 'widget' || cardEl.classList.contains('ios-widget');
+    const dataset = {
+      placeholderKind: kind,
+    };
+    if (isWidget) {
+      const rawSize = String(cardEl.dataset?.widgetSize || '').trim();
+      dataset.widgetSize =
+        rawSize === 'compact' || rawSize === 'square' || rawSize === 'wide' ? rawSize : 'compact';
+    }
     const ph = el('div', {
       className: `desktop-drag-placeholder ${
         isWidget ? 'ios-widget-placeholder' : 'app-item-placeholder'
       }`,
       'aria-hidden': 'true',
-      dataset: {
-        placeholderKind: kind,
-      },
+      dataset,
     });
     if (rect && rect.height > 0) {
       ph.style.minHeight = `${Math.round(rect.height)}px`;

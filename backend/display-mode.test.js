@@ -4,6 +4,7 @@ import {
   MOBILE_DISPLAY_MODE_STORAGE_KEY, loadMobileDisplayMode, saveMobileDisplayMode,
   normalizeMobileDisplayMode, resolveEffectiveDisplayMode, computeSingleScreenMetrics,
   measureGridFlowRows, packCategoryItemsIntoViews, buildScreenViewsModel, resolveViewDropBeforeAnchor,
+  resolveWidgetDisplaySize, getWidgetGridSpan,
 } from '../frontend/lib/display-mode.js';
 import { migrateLegacyDesktop, placeDesktopItemBefore } from '../frontend/lib/desktop-layout.js';
 import { defaultWidgetState, validateWidgetDocument } from './features/widgets.js';
@@ -12,6 +13,45 @@ const defaults = [
   ...defaultWidgetState().layout.map(w => ({ kind: 'widget', id: w.id })),
   ...Array.from({ length: 24 }, (_, i) => ({ kind: 'site', id: `site_${i}` })),
 ];
+
+test('wide and square widgets reserve both rows when ordering sites and compact overflow', () => {
+  const wide = { kind: 'widget', id: 'calendar', widget: { type: 'calendar', size: 'wide' } };
+  const square = { kind: 'widget', id: 'todo', widget: { type: 'todo', size: 'square' } };
+  const site = { kind: 'site', id: 'site' };
+  const items = [wide, square, site];
+  const metrics = { ...computeSingleScreenMetrics({ viewportWidth: 900 }), maxRows: 2 };
+  assert.deepEqual(getWidgetGridSpan(wide, metrics), { colSpan: 4, rowSpan: 2 });
+  assert.deepEqual(getWidgetGridSpan(square, metrics), { colSpan: 2, rowSpan: 2 });
+  const { positions, totalRows } = measureGridFlowRows(items, metrics);
+  assert.deepEqual(positions.map(({ row, col }) => [row, col]), [[0, 0], [0, 4], [2, 0]]);
+  assert.equal(totalRows, 3);
+  const [view] = packCategoryItemsIntoViews(items, { metrics });
+  assert.deepEqual(view.items, [wide, square]);
+  assert.deepEqual(view.overflowItems, [site]);
+});
+
+test('limited space downgrades widget dimensions for display without losing the stored choice', () => {
+  const widget = Object.freeze({ type: 'calendar', size: 'wide' });
+  const item = Object.freeze({ kind: 'widget', id: 'calendar', widget });
+  const metrics = computeSingleScreenMetrics({ viewportWidth: 900 });
+  assert.equal(resolveWidgetDisplaySize(item, { ...metrics, maxRows: 1 }), 'compact');
+  assert.equal(resolveWidgetDisplaySize(item, { ...metrics, columns: 3 }), 'square');
+  assert.equal(resolveWidgetDisplaySize(item, metrics), 'wide');
+  assert.equal(widget.size, 'wide');
+});
+
+test('a measured short window keeps its visible grid and offers overflow for the remaining cards', () => {
+  const metrics = computeSingleScreenMetrics({ viewportWidth: 800, viewportHeight: 420, measuredAvailableGridHeight: 114 });
+  const items = defaultWidgetState().layout.map(widget => ({ kind: 'widget', id: widget.id, widget }));
+  items[0].widget.size = 'wide';
+  const [view] = packCategoryItemsIntoViews(items, { metrics });
+  assert.equal(metrics.availableGridHeight, 114);
+  assert.equal(metrics.maxRows, 1);
+  assert.equal(resolveWidgetDisplaySize(view.items[0], metrics), 'compact');
+  assert.ok(view.overflowItems.length > 0);
+  assert.deepEqual([...view.items, ...view.overflowItems], items);
+});
+
 function storage() {
   const data = new Map();
   return { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) };

@@ -4,18 +4,59 @@ const WIDGET_CACHE_KEY = 'ios18_widgets_state_v1';
 const WIDGET_REV_KEY = 'ios18_widgets_revision_v1';
 const WIDGET_OUTBOX_KEY = 'ios18_widgets_outbox_v1';
 
+export const WIDGET_SIZES = Object.freeze({
+  COMPACT: 'compact',
+  SQUARE: 'square',
+  WIDE: 'wide',
+});
+
+export const DEFAULT_WIDGET_SIZE = WIDGET_SIZES.COMPACT;
+
+export const ALLOWED_WIDGET_SIZES = Object.freeze([
+  WIDGET_SIZES.COMPACT,
+  WIDGET_SIZES.SQUARE,
+  WIDGET_SIZES.WIDE,
+]);
+
 export const DEFAULT_WIDGET_DEFINITIONS = [
-  { type: 'clock-weather', title: '时钟与天气', version: 1, sizes: ['medium'], defaultConfig: { showSeconds: true }, capabilities: ['clock', 'weather', 'device-settings'] },
-  { type: 'focus-timer', title: '专注计时', version: 1, sizes: ['medium'], defaultConfig: { workMinutes: 25, breakMinutes: 5 }, capabilities: ['local-timer'] },
-  { type: 'quick-note', title: '速记', version: 1, sizes: ['medium'], defaultConfig: {}, capabilities: ['shared-note'] },
-  { type: 'todo', title: '待办清单', version: 1, sizes: ['medium'], defaultConfig: { hideCompleted: false }, capabilities: ['shared-todos'] },
-  { type: 'calendar', title: '月历', version: 1, sizes: ['medium'], defaultConfig: { weekStartsOn: 1 }, capabilities: ['clock'] },
-  { type: 'world-clock', title: '世界时钟', version: 1, sizes: ['medium'], defaultConfig: { zones: [
+  { type: 'clock-weather', title: '时钟与天气', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: { showSeconds: true }, capabilities: ['clock', 'weather', 'device-settings'] },
+  { type: 'focus-timer', title: '专注计时', version: 1, sizes: ['compact', 'square'], defaultConfig: { workMinutes: 25, breakMinutes: 5 }, capabilities: ['local-timer'] },
+  { type: 'quick-note', title: '速记', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: {}, capabilities: ['shared-note'] },
+  { type: 'todo', title: '待办清单', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: { hideCompleted: false }, capabilities: ['shared-todos'] },
+  { type: 'calendar', title: '月历', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: { weekStartsOn: 1 }, capabilities: ['clock'] },
+  { type: 'world-clock', title: '世界时钟', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: { zones: [
     { label: '上海', timeZone: 'Asia/Shanghai' },
     { label: '伦敦', timeZone: 'Europe/London' },
     { label: '纽约', timeZone: 'America/New_York' },
   ] }, capabilities: ['clock'] },
 ];
+
+export function getSupportedSizesForWidgetType(type, definitions = DEFAULT_WIDGET_DEFINITIONS) {
+  const defs = Array.isArray(definitions) && definitions.length > 0
+    ? definitions
+    : DEFAULT_WIDGET_DEFINITIONS;
+  const def = defs.find(d => d && d.type === type) || DEFAULT_WIDGET_DEFINITIONS.find(d => d.type === type);
+  const rawSizes = Array.isArray(def?.sizes) ? def.sizes : [];
+  const filtered = rawSizes.filter(s => ALLOWED_WIDGET_SIZES.includes(s));
+  if (filtered.length > 0) {
+    return filtered;
+  }
+  return type === 'focus-timer' ? ['compact', 'square'] : ['compact', 'square', 'wide'];
+}
+
+export function normalizeWidgetSize(rawSize, type = null, definitions = DEFAULT_WIDGET_DEFINITIONS) {
+  const candidate = typeof rawSize === 'string' ? rawSize.trim() : '';
+  if (!ALLOWED_WIDGET_SIZES.includes(candidate)) {
+    return DEFAULT_WIDGET_SIZE;
+  }
+  if (type) {
+    const supported = getSupportedSizesForWidgetType(type, definitions);
+    if (!supported.includes(candidate)) {
+      return DEFAULT_WIDGET_SIZE;
+    }
+  }
+  return candidate;
+}
 
 export function createDefaultWidgetState(definitions = DEFAULT_WIDGET_DEFINITIONS) {
   return {

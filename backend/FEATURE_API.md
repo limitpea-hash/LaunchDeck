@@ -20,7 +20,7 @@
   "type": "todo",
   "title": "待办清单",
   "version": 1,
-  "sizes": ["medium"],
+  "sizes": ["compact", "square", "wide"],
   "defaultConfig": { "hideCompleted": false },
   "capabilities": ["shared-todos"]
 }
@@ -37,7 +37,7 @@
   "revision": 0,
   "state": {
     "layout": [
-      { "id": "todo", "type": "todo", "enabled": true, "order": 3, "config": { "hideCompleted": false } }
+      { "id": "todo", "type": "todo", "enabled": true, "order": 3, "size": "wide", "config": { "hideCompleted": false } }
     ],
     "todos": [
       { "id": "todo_1", "text": "编写一个自己的组件", "completed": false, "dueDate": "2026-11-04" }
@@ -52,6 +52,7 @@
 PATCH 示例：`{ "todos": [] }`。支持字段 `layout`、`todos`、`desktop`，至少一项。允许空布局与空待办。
 
 - `layout` 最多 24 项；`id` 必须唯一，1–80 位字母、数字、下划线或连字符；`order` 为 0–23 的唯一整数，前端按 order 排序。
+- 可选 `size` 必须在对应类型的 `sizes` 中。`compact` 为 2 列 × 1 行，`square` 为 2 列 × 2 行，`wide` 为 4 列 × 2 行。专注计时支持前两种。旧记录省略该字段，显示为 `compact`。窗口缩小时可调整实际显示尺寸，保存值仍代表用户的选择。
 - 类型必须注册；`enabled` 为布尔值。`config` 严格白名单如下：
 
 | 类型 | 完整 config | 限制 |
@@ -272,7 +273,7 @@ HTTP与扩展消息桥提供相同接口，不需要额外备份服务：
 - `GET /api/navigation/browser-data` → `{restoreId:null|string,data:null|{pages,customSites,siteOrder}}`。仅在恢复标识变化时更新本机缓存，普通刷新不能重复覆盖后续本机编辑。
 - `POST /api/navigation/import`，JSON `{backup,portalRevision,widgetRevision}`，最大2MiB。成功返回 `{success:true,restoreId,browserData:{pages,customSites,siteOrder},revisions:{portal,widgets}}`。每次成功恢复生成新restoreId，即使同一备份重复恢复。
 
-导航格式为 `launchdeck-navigation/version=1`，含 `backupId`（32小写hex）、`exportedAt`（规范ISO）、`sites`、`pages`、`desktop`（v2）及 `widgetSlots:[{id,type}]`。严格字段白名单，不含正文、配置或设备信息。只接受已注册组件及HTTP/HTTPS无凭据网址，拒绝缺失网站引用、嵌套文件夹、重复位置、未知字段、超过1MiB解压内容。共享纯模块在 `backend/navigation/`，HTTP只允许静态访问指定校验文件，不暴露数据库或服务代码。
+导航格式为 `launchdeck-navigation/version=1`，含 `backupId`（32小写hex）、`exportedAt`（规范ISO）、`sites`、`pages`、`desktop`（v2）及 `widgetSlots:[{id,type,size?}]`。`size` 省略时按 `compact` 恢复。严格字段白名单，不含正文、配置或设备信息。只接受已注册组件及HTTP/HTTPS无凭据网址，拒绝缺失网站引用、嵌套文件夹、重复位置、未知字段、超过1MiB解压内容。共享纯模块在 `backend/navigation/`，HTTP只允许静态访问指定校验文件，不暴露数据库或服务代码。
 
 恢复前应排空本窗口两类保存队列，并阻止本窗口继续编辑。必须提交两份当前版本：409任一版本冲突、428网站文档尚未初始化、400数据错误、413请求超限、503存储失败；任何一项失败都不写入部分数据。HTTP采用同一SQLite事务，扩展采用队列内单次storage.set。只替换网站和桌面位置，保留当前prefs/note/todos/组件config/device；缺少的本机组件保留配置并隐藏。自定义页面及其网站在browserData中返回并持久化为恢复快照。
 

@@ -63,7 +63,8 @@
       "wallpaperDimmed": false,
       "tintHue": 215,
       "tintSat": 82,
-      "focusActive": false
+      "focusActive": false,
+      "nightMode": false
     },
     "note": ""
   },
@@ -78,6 +79,8 @@
 请求头：`Content-Type: application/json` 和 `If-Match: "1"`。版本必须来自最近一次读取或保存的响应。
 
 请求体可包含 `sites`、`prefs`、`note` 中的一项或多项；每一项整体替换，未提供的项保持原值。第一次保存必须提供全部三项。网站数组的顺序就是桌面顺序，`pinned` 决定是否固定到程序坞。支持空网站列表和空便签。
+
+`prefs.nightMode` 是可选布尔值，旧记录缺省按关闭显示。夜间模式和图标模式、壁纸设置可分别使用。`focusActive` 是旧备份的兼容字段。
 
 网站字段与当前 `DEFAULT_SITES` 一致：必填 `id`、`title`、`url`、`category`、`gradient`、`accent`、`pinned`；可选 `iconKey`、`keywords`。分类为 `ai/design/dev/media`，网址仅支持 HTTP(S)。图标渐变支持当前前端使用的十六进制颜色 linear-gradient 格式。
 

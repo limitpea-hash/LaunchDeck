@@ -13,6 +13,7 @@ export function mergeNavigationBackup(backup, portal, widgets) {
     check(!previous || previous.type === slot.type, '同一组件ID的类型不同，恢复已取消');
     old.delete(slot.id);
     return { id: slot.id, type: slot.type, order, enabled: placed.has(slot.id),
+      ...(Object.hasOwn(slot, 'size') ? { size: slot.size } : {}),
       config: structuredClone(previous?.config ?? widgetDefinitions.find(d => d.type === slot.type).defaultConfig) };
   });
   // Preserve local configuration even when the imported desktop hides a widget.

@@ -1,4 +1,5 @@
-import { DEFAULT_WIDGET_DEFINITIONS } from './feature-client.js';
+import { DEFAULT_WIDGET_DEFINITIONS, createDefaultWidgetState, normalizeWidgetSize } from './feature-client.js';
+import { safeHttpUrl } from './dom.js';
 import {
   MAX_DESKTOP_FOLDERS,
   MIN_FOLDER_SITES,
@@ -148,6 +149,7 @@ export function normalizeWidgetLayout(rawLayout, definitions = DEFAULT_WIDGET_DE
         type,
         enabled: item.enabled !== false,
         order: Number.isFinite(Number(item.order)) ? Number(item.order) : list.length,
+        ...(Object.hasOwn(item, 'size') ? { size: normalizeWidgetSize(item.size, type, defs) } : {}),
         config:
           item.config && typeof item.config === 'object'
             ? structuredClone(item.config)
@@ -388,9 +390,15 @@ export function migrateLegacyDesktop({
   sites = [],
   layout = [],
   definitions = DEFAULT_WIDGET_DEFINITIONS,
+  omitHomeSiteIds = [],
 } = {}) {
   const normalizedPages = normalizePages(pages, DEFAULT_SYSTEM_PAGES);
   const normalizedLayout = normalizeWidgetLayout(layout, definitions);
+  const omitHomeSet = new Set(
+    omitHomeSiteIds instanceof Set || Array.isArray(omitHomeSiteIds)
+      ? Array.from(omitHomeSiteIds, id => String(id || '').trim()).filter(Boolean)
+      : []
+  );
   const rawPlacements = [];
 
   let allOrder = 0;
@@ -407,7 +415,7 @@ export function migrateLegacyDesktop({
   const safeSites = Array.isArray(sites) ? sites : [];
   for (const site of safeSites) {
     const siteId = String(site?.id || '').trim();
-    if (!isValidPlacementId(siteId)) continue;
+    if (!isValidPlacementId(siteId) || omitHomeSet.has(siteId)) continue;
     rawPlacements.push({
       kind: 'site',
       id: siteId,
@@ -442,6 +450,135 @@ export function migrateLegacyDesktop({
     },
     normalizedLayout,
     { fallbackPages: normalizedPages, definitions }
+  );
+}
+
+function normalizeUrlForDefaultSiteComparison(rawUrl) {
+  const safe = safeHttpUrl(rawUrl);
+  if (safe) return safe;
+  return String(rawUrl || '').trim();
+}
+
+export function doesSitesMatchDefaultSnapshot(sites = [], defaultSites = []) {
+  if (!Array.isArray(sites) || !Array.isArray(defaultSites)) return false;
+  if (sites.length !== defaultSites.length) return false;
+  for (let i = 0; i < defaultSites.length; i++) {
+    const cur = sites[i];
+    const def = defaultSites[i];
+    if (!cur || typeof cur !== 'object' || !def || typeof def !== 'object') return false;
+    if (String(cur.id || '').trim() !== String(def.id || '').trim()) return false;
+    if (String(cur.title || '').trim() !== String(def.title || '').trim()) return false;
+    if (String(cur.category || '').trim() !== String(def.category || '').trim()) return false;
+    if (normalizeUrlForDefaultSiteComparison(cur.url) !== normalizeUrlForDefaultSiteComparison(def.url)) {
+      return false;
+    }
+    if (Boolean(cur.pinned) !== Boolean(def.pinned)) return false;
+  }
+  return true;
+}
+
+export function doesDesktopMatchLegacyDefaultSnapshot(
+  desktop,
+  {
+    pages = DEFAULT_SYSTEM_PAGES,
+    sites = [],
+    defaultPages = DEFAULT_SYSTEM_PAGES,
+    defaultSites = [],
+    definitions = DEFAULT_WIDGET_DEFINITIONS,
+    hasUnsyncedLayout = false,
+    hasRestoreMarker = false,
+  } = {}
+) {
+  if (hasUnsyncedLayout || hasRestoreMarker) return false;
+  if (!desktop || typeof desktop !== 'object') return false;
+  if (Array.isArray(desktop.folders) && desktop.folders.length > 0) return false;
+  if (!doesSitesMatchDefaultSnapshot(sites, defaultSites)) return false;
+
+  const defs = Array.isArray(definitions) && definitions.length > 0
+    ? definitions
+    : DEFAULT_WIDGET_DEFINITIONS;
+  const legacyDefault = migrateLegacyDesktop({
+    pages: defaultPages,
+    sites: defaultSites,
+    layout: createDefaultWidgetState(defs).layout,
+    definitions: defs,
+  }).desktop;
+
+  const checkPagesMatch = (candidatePages) => {
+    if (!Array.isArray(candidatePages) || candidatePages.length !== legacyDefault.pages.length) {
+      return false;
+    }
+    for (let i = 0; i < legacyDefault.pages.length; i++) {
+      const p = candidatePages[i];
+      const d = legacyDefault.pages[i];
+      if (!p || typeof p !== 'object') return false;
+      if (
+        p.id !== d.id ||
+        p.title !== d.title ||
+        p.icon !== d.icon ||
+        Boolean(p.isSystem) !== Boolean(d.isSystem) ||
+        Number(p.order) !== Number(d.order)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  if (!checkPagesMatch(desktop.pages)) return false;
+  if (Array.isArray(pages) && pages.length > 0 && !checkPagesMatch(pages)) return false;
+
+  if (
+    !Array.isArray(desktop.placements) ||
+    desktop.placements.length !== legacyDefault.placements.length
+  ) {
+    return false;
+  }
+
+  for (let i = 0; i < legacyDefault.placements.length; i++) {
+    const p = desktop.placements[i];
+    const d = legacyDefault.placements[i];
+    if (!p || typeof p !== 'object') return false;
+    if (
+      p.kind !== d.kind ||
+      p.id !== d.id ||
+      p.pageId !== d.pageId ||
+      Number(p.order) !== Number(d.order)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function stripDefaultSitePlacementsFromHomePage(
+  desktop,
+  layout = [],
+  {
+    defaultSites = [],
+    fallbackPages = DEFAULT_SYSTEM_PAGES,
+    definitions = DEFAULT_WIDGET_DEFINITIONS,
+  } = {}
+) {
+  if (!desktop || typeof desktop !== 'object') {
+    return reconcileDesktopWithLayout(desktop, layout, { fallbackPages, definitions });
+  }
+  const presetSiteIds = new Set(
+    (Array.isArray(defaultSites) ? defaultSites : [])
+      .map(s => String(s?.id || '').trim())
+      .filter(Boolean)
+  );
+  const filteredPlacements = (Array.isArray(desktop.placements) ? desktop.placements : []).filter(
+    p => !(p && p.pageId === 'all' && p.kind === 'site' && presetSiteIds.has(String(p.id || '').trim()))
+  );
+  return reconcileDesktopWithLayout(
+    {
+      ...desktop,
+      placements: filteredPlacements,
+    },
+    layout,
+    { fallbackPages, definitions }
   );
 }
 

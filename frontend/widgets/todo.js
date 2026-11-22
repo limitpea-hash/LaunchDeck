@@ -5,6 +5,12 @@ import {
   createDatePicker,
   createIconButton,
 } from '../lib/ui/index.js';
+import {
+  createCompactTopRow,
+  createStaticWidgetIcon,
+  createSummaryExtra,
+  createSummaryScrollRegion,
+} from './summary-helpers.js';
 
 function isValidDateString(value) {
   if (!value) return true;
@@ -68,19 +74,34 @@ export function mount(root, context) {
   const listContainer = el('div', { className: 'todo-list-container', role: 'list' });
 
   const inner = el('div', { className: 'widget-inner' }, header, form, errorBanner, listContainer);
+  const { topRow: compactTopRow } = createCompactTopRow({
+    kickerText: '待办清单',
+    iconNode: createStaticWidgetIcon('todo'),
+    accentClass: 'is-todo',
+  });
   const compactPrimary = el('div', { className: 'widget-compact-primary', textContent: '0 待办' });
+  const compactTodoFill = el('div', { className: 'compact-todo-fill' });
+  compactTodoFill.style.width = '0%';
+  const compactTodoTrack = el('div', { className: 'compact-todo-track', 'aria-hidden': 'true' }, compactTodoFill);
   const compactSecondary = el('div', { className: 'widget-compact-secondary', textContent: '点击查看或添加待办' });
+  const summaryTodoStats = el('div', { className: 'summary-todo-stats', textContent: '' });
+  const summaryTodoScroll = createSummaryScrollRegion({
+    ariaLabel: '待办清单事项预览',
+    extraClass: 'summary-todo-scroll',
+  });
+  const summaryExtra = createSummaryExtra(
+    'summary-extra-todo',
+    summaryTodoStats,
+    summaryTodoScroll
+  );
   const compactSummary = el(
     'div',
-    { className: 'widget-compact-summary' },
-    el(
-      'div',
-      { className: 'widget-compact-top' },
-      el('span', { className: 'widget-compact-kicker', textContent: '待办清单' }),
-      el('span', { className: 'widget-compact-badge', textContent: '详情 ↗' })
-    ),
+    { className: 'widget-compact-summary compact-layout-todo' },
+    compactTopRow,
     compactPrimary,
-    compactSecondary
+    compactTodoTrack,
+    compactSecondary,
+    summaryExtra
   );
   const label = el('span', { className: 'widget-label', textContent: '待办清单' });
   root.append(inner, compactSummary, label);
@@ -107,6 +128,9 @@ export function mount(root, context) {
     clearElement(listContainer);
     const remainingItems = todos.filter(item => !item.completed);
     const remainingCount = remainingItems.length;
+    const completedCount = todos.length - remainingCount;
+    const completedPct = todos.length > 0 ? Math.round((completedCount / todos.length) * 100) : 0;
+    compactTodoFill.style.width = `${completedPct}%`;
     setText(countBadge, `${remainingCount}/${todos.length}`);
     setText(hideToggleBtn, config.hideCompleted ? '显示已完成' : '隐藏已完成');
     setText(
@@ -118,6 +142,55 @@ export function mount(root, context) {
       compactSecondary,
       firstItem ? firstItem.text.slice(0, 28) : '点击添加新的待办事项'
     );
+
+    setText(
+      summaryTodoStats,
+      todos.length === 0
+        ? '今日暂无待办事项'
+        : `完成度 ${completedPct}% · 待办 ${remainingCount} 项 · 已完成 ${completedCount} 项`
+    );
+    clearElement(summaryTodoScroll);
+    const previewList = [
+      ...remainingItems,
+      ...todos.filter(item => item.completed),
+    ].slice(0, 10);
+    if (previewList.length === 0) {
+      summaryTodoScroll.appendChild(
+        el('div', {
+          className: 'summary-todo-empty',
+          textContent: '暂无待办事项，点击卡片添加新计划',
+        })
+      );
+    } else {
+      for (const item of previewList) {
+        const markEl = el('span', {
+          className: `summary-todo-bullet ${item.completed ? 'is-done' : ''}`.trim(),
+          'aria-hidden': 'true',
+          textContent: item.completed ? '✓' : '○',
+        });
+        const textEl = el('span', {
+          className: `summary-todo-text ${item.completed ? 'is-done' : ''}`.trim(),
+          textContent: item.text,
+        });
+        const dueEl = item.dueDate
+          ? el('span', {
+              className: 'summary-todo-due',
+              textContent: item.dueDate,
+            })
+          : null;
+        summaryTodoScroll.appendChild(
+          el(
+            'div',
+            {
+              className: `summary-todo-item ${item.completed ? 'is-completed' : ''}`.trim(),
+            },
+            markEl,
+            textEl,
+            dueEl
+          )
+        );
+      }
+    }
 
     const visibleTodos = config.hideCompleted
       ? todos.filter(item => !item.completed)

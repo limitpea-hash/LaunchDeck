@@ -63,6 +63,38 @@ test('navigation export is a strict content-free whitelist; merge preserves loca
   assert.deepEqual(f.portal.sites.map(s => s.id), ['local']);
 });
 
+test('widget dimensions survive compressed navigation and full extension backups, with old backups defaulting to compact', async () => {
+  const { sites, widgets, portal, backup: legacyBackup } = fixture();
+  const calendar = layout => layout.find(item => item.type === 'calendar');
+  calendar(widgets.layout).size = 'wide';
+  portal.prefs = { ...portal.prefs, nightMode: true };
+  const backup = createNavigationBackup({ sites, pages, desktop: widgets.desktop, layout: widgets.layout });
+  assert.deepEqual(calendar(backup.widgetSlots), { id: 'calendar', type: 'calendar', size: 'wide' });
+  const decoded = await decodeNavigationPacket(await encodeNavigationBackup(backup));
+  const docs = createLocalDocuments(storageFixture());
+  await docs.patch('portal', portal, '"0"');
+  await docs.patch('widgets', widgets, '"0"');
+  await docs.importNavigation({ backup: decoded, portalRevision: 1, widgetRevision: 1 });
+  const full = await docs.exportData();
+  assert.equal(full.portal.prefs.nightMode, true);
+  assert.equal(calendar(full.widgets.layout).size, 'wide');
+  assert.deepEqual(calendar(full.widgets.layout).config, calendar(widgets.layout).config);
+  assert.deepEqual(full.widgets.todos, widgets.todos);
+  for (const size of ['medium', 'resize(1)', '__proto__', 4, null]) {
+    const invalid = structuredClone(backup);
+    calendar(invalid.widgetSlots).size = size;
+    bad(() => validateNavigationBackup(invalid));
+  }
+  const invalid = structuredClone(full);
+  invalid.widgets.layout.find(item => item.type === 'focus-timer').size = 'wide';
+  await assert.rejects(docs.importData(invalid), { status: 400 });
+  await docs.importNavigation({ backup: legacyBackup, portalRevision: 2, widgetRevision: 2 });
+  assert.equal(calendar((await docs.read('widgets')).state.layout).size, undefined);
+  assert.equal((await docs.read('portal')).state.prefs.nightMode, true);
+  await docs.importData(full);
+  assert.equal(calendar((await docs.read('widgets')).state.layout).size, 'wide');
+});
+
 test('mixed custom/system Dock order survives restore and reload, with later remote system reorders respected', () => {
   const f=fixture(); f.backup.sites=[f.backup.sites[2],f.backup.sites[0],f.backup.sites[1]];
   f.backup.sites.forEach(site=>{site.pinned=true;});
@@ -219,6 +251,28 @@ test('HTTP restores atomically, checks both versions and exposes only allowliste
   for (const path of ['/platform/app.js', '/platform/navigation/http.js', '/platform/features/store.js', '/platform/extension/runtime/documents.js']) assert.equal((await request(path)).status, 404);
   assert.equal((await request('/api/navigation/browser-data?x=1')).status, 400);
   assert.equal((await request('/api/navigation/import')).status, 405);
+});
+
+test('HTTP versioned writes validate widget sizes and night mode without changing legacy defaults', async t => {
+  const { request } = await start(t);
+  const { portal, widgets } = fixture();
+  assert.equal((await request('/api/state', 'PATCH', portal, 0)).status, 200);
+  assert.equal((await request('/api/state', 'PATCH', { prefs: { ...prefs, nightMode: 'true' } }, 1)).status, 400);
+  assert.equal((await request('/api/state', 'PATCH', { prefs: { ...prefs, nightMode: true } }, 1)).status, 200);
+  assert.equal((await request('/api/widgets/state', 'PATCH', widgets, 0)).status, 200);
+
+  const layout = structuredClone(widgets.layout);
+  const calendar = layout.find(item => item.type === 'calendar');
+  calendar.size = ['wide'];
+  assert.equal((await request('/api/widgets/state', 'PATCH', { layout }, 1)).status, 400);
+  calendar.size = 'square';
+  assert.equal((await request('/api/widgets/state', 'PATCH', { layout }, 1)).status, 200);
+  assert.equal((await request('/api/widgets/state', 'PATCH', { layout: widgets.layout }, 1)).status, 409);
+  const docs = await Promise.all(['/api/state', '/api/widgets/state', '/api/widgets'].map(async path => (await request(path)).json()));
+  assert.equal(docs[0].state.prefs.nightMode, true);
+  assert.deepEqual(docs[1].state.desktop, widgets.desktop);
+  assert.equal(docs[1].state.layout.find(item => item.id === calendar.id).size, 'square');
+  assert.deepEqual(docs[2].widgets.find(item => item.type === 'focus-timer').sizes, ['compact', 'square']);
 });
 
 test('top-level links can open static pages while cross-site API reads and writes stay blocked', async t => {

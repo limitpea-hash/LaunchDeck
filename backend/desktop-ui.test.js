@@ -30,6 +30,46 @@ test('empty legacy widget layout remains empty instead of silently restoring all
   assert.equal(value.desktop.placements.filter(p => p.kind === 'widget').length, 0);
 });
 
+test('new home excludes preset copies while keeping widgets, custom sites and category placements', () => {
+  const preset = { id: 'starter', title: 'Starter', category: 'ai', url: 'https://example.com', pinned: true };
+  const value = verify(model.migrateLegacyDesktop({
+    pages, sites: [preset, sites[1]], layout: defaultWidgetState().layout, omitHomeSiteIds: [preset.id],
+  }));
+  const home = model.getPagePlacements(value.desktop, 'all');
+  assert.equal(home.filter(item => item.kind === 'widget').length, 6);
+  assert.deepEqual(home.filter(item => item.kind === 'site').map(item => item.id), ['custom']);
+  assert.deepEqual(model.getPagePlacements(value.desktop, 'ai').map(item => item.id), ['starter']);
+});
+
+test('old default cleanup recognizes only pristine placement order and preserves local widget settings', () => {
+  const defaultSites = [
+    { id: 'starter', title: 'Starter', category: 'ai', url: 'https://example.com', pinned: true },
+    { id: 'docs', title: 'Docs', category: 'dev', url: 'https://example.org/docs', pinned: false },
+  ];
+  const storedSites = defaultSites.map(site => ({ ...site, url: new URL(site.url).href }));
+  const layout = defaultWidgetState().layout;
+  layout.find(widget => widget.type === 'calendar').config.weekStartsOn = 0;
+  const baseline = model.migrateLegacyDesktop({ sites: defaultSites, layout });
+  const criteria = { sites: storedSites, defaultSites };
+  assert.equal(model.doesDesktopMatchLegacyDefaultSnapshot(baseline.desktop, criteria), true);
+  const { folders, ...legacy } = baseline.desktop;
+  assert.equal(model.doesDesktopMatchLegacyDefaultSnapshot({ ...legacy, schemaVersion: 1 }, criteria), true);
+
+  const reordered = model.reorderPlacementInPage(baseline.desktop, {
+    pageId: 'all', draggedKind: 'site', draggedId: 'docs', targetKind: 'site', targetId: 'starter',
+  });
+  assert.equal(model.doesDesktopMatchLegacyDefaultSnapshot(reordered, criteria), false);
+  for (const guard of ['hasUnsyncedLayout', 'hasRestoreMarker']) {
+    assert.equal(model.doesDesktopMatchLegacyDefaultSnapshot(baseline.desktop, { ...criteria, [guard]: true }), false);
+  }
+
+  const cleaned = verify(model.stripDefaultSitePlacementsFromHomePage(baseline.desktop, baseline.layout, { defaultSites }));
+  assert.deepEqual(cleaned.desktop.placements.filter(item => item.pageId !== 'all'), baseline.desktop.placements.filter(item => item.pageId !== 'all'));
+  assert.equal(cleaned.desktop.placements.filter(item => item.pageId === 'all' && item.kind === 'site').length, 0);
+  assert.equal(cleaned.layout.find(widget => widget.type === 'calendar').config.weekStartsOn, 0);
+  assert.equal(model.doesDesktopMatchLegacyDefaultSnapshot(cleaned.desktop, criteria), false);
+});
+
 test('mixed ordering moves widgets between sites, persists across reconciliation, and merges site mirrors on cross-page moves', () => {
   const value = migrate();
   let desktop = model.reorderPlacementInPage(value.desktop, { pageId: 'all', draggedKind: 'widget', draggedId: 'calendar', targetKind: 'site', targetId: 'first' });
@@ -42,13 +82,18 @@ test('mixed ordering moves widgets between sites, persists across reconciliation
   assert.equal(reconciled.desktop.placements.find(p => p.id === 'first').pageId, 'ai');
 });
 
-test('widget removal and re-add preserve configuration while page deletion moves unique placements home', () => {
+test('widget removal and re-add preserve size and configuration while page deletion moves unique placements home', () => {
   let value = migrate();
-  value.layout.find(w => w.id === 'calendar').config.weekStartsOn = 0;
+  const calendar = value.layout.find(w => w.id === 'calendar');
+  calendar.config.weekStartsOn = 0;
+  calendar.size = 'wide';
   value = verify(model.disableWidget(value, 'calendar'));
   assert.equal(value.desktop.placements.some(p => p.id === 'calendar'), false);
+  assert.equal(value.layout.find(w => w.id === 'calendar').size, 'wide');
   value = verify(model.enableWidgetOnPage(value, { widgetId: 'calendar', pageId: 'page_reading' }));
-  assert.equal(value.layout.find(w => w.id === 'calendar').config.weekStartsOn, 0);
+  const restored = value.layout.find(w => w.id === 'calendar');
+  assert.equal(restored.config.weekStartsOn, 0);
+  assert.equal(restored.size, 'wide');
   value.desktop = model.deleteDesktopPage(value.desktop, 'page_reading');
   verify(value);
   assert.equal(value.desktop.placements.find(p => p.id === 'calendar').pageId, 'all');

@@ -4002,6 +4002,119 @@ body[data-icon-mode="tinted"] .widget-compact-summary {
   text-overflow: ellipsis;
 }
 
+/* Distinct compact widget summaries */
+.widget-compact-summary { --summary-accent: #9dccff; --summary-icon-size: 17px; }
+.compact-layout-clock-weather { --summary-accent: #8fd8ff; }
+.compact-layout-focus-timer { --summary-accent: #d6b0ff; }
+.compact-layout-calendar { --summary-accent: #ffa9b8; }
+.compact-layout-world-clock { --summary-accent: #9ebcff; }
+.compact-layout-todo { --summary-accent: #89ecc3; }
+.compact-layout-quick-note { --summary-accent: #ffe1a2; }
+body[data-icon-mode="tinted"] .widget-compact-summary { --summary-accent: var(--tint-color-bright); }
+
+.widget-compact-kicker-wrap { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.widget-compact-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: var(--summary-icon-size);
+  height: var(--summary-icon-size);
+  color: var(--summary-accent);
+}
+.widget-compact-icon svg { display: block; width: 100%; height: 100%; }
+
+.compact-cw-row,
+.compact-cw-meta,
+.compact-focus-body,
+.compact-cal-body,
+.compact-world-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.compact-cw-row,
+.compact-focus-body,
+.compact-world-row { justify-content: space-between; }
+.compact-cw-time { font-size: 1.2em; }
+.compact-cw-temp { color: var(--summary-accent); }
+.compact-cw-city,
+.compact-cw-cond,
+.compact-world-city {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compact-cw-cond { color: var(--summary-accent); }
+.compact-cw-temp, .compact-cw-dot, .compact-world-time { flex-shrink: 0; }
+.compact-focus-meta, .compact-cal-meta { min-width: 0; }
+.compact-focus-ring {
+  display: grid;
+  flex: 0 0 auto;
+  position: relative;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: var(--summary-accent);
+}
+.compact-focus-ring-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.compact-ring-track { stroke: rgba(255,255,255,.2); }
+.compact-ring-value { stroke: currentColor; }
+.compact-focus-ring[data-phase="break"] { color: #89ecc3; }
+body[data-icon-mode="tinted"] .compact-focus-ring { color: var(--summary-accent); }
+.compact-focus-ring-pct { font-size: 9px; font-weight: 750; font-variant-numeric: tabular-nums; }
+
+.compact-cal-tile {
+  display: grid;
+  place-content: center;
+  flex: 0 0 auto;
+  width: 31px;
+  height: 31px;
+  text-align: center;
+  color: var(--summary-accent);
+  background: rgba(255,255,255,.10);
+  border-radius: 7px;
+  line-height: 1;
+}
+.compact-cal-tile-month { font-size: 8px; }
+.compact-cal-tile-day { font-size: 16px; font-weight: 800; }
+.compact-world-rows { display: grid; gap: 2px; min-width: 0; }
+.compact-world-row[hidden] { display: none; }
+.compact-world-row { font-size: 11px; line-height: 1.15; }
+.compact-world-city { color: rgba(255,255,255,.82); }
+.compact-world-time { color: var(--summary-accent); font-variant-numeric: tabular-nums; font-weight: 750; }
+
+.compact-todo-track { height: 3px; border-radius: 3px; background: rgba(255,255,255,.2); overflow: hidden; }
+.compact-todo-fill { height: 100%; border-radius: inherit; background: var(--summary-accent); }
+.compact-note-paper {
+  min-width: 0;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(255,255,255,.075);
+  border-inline-start: 2px solid var(--summary-accent);
+}
+.compact-note-line1 { border-bottom: 1px solid rgba(255,255,255,.13); }
+.compact-note-line2 { color: var(--summary-accent); }
+@media (max-width: 720px) {
+  body.is-compact-mode .widget-compact-summary { --summary-icon-size: 13px; }
+  body.is-compact-mode .widget-compact-kicker-wrap,
+  body.is-compact-mode .compact-cw-meta { gap: 3px; }
+  body.is-compact-mode .compact-focus-ring,
+  body.is-compact-mode .compact-cal-tile { width: 25px; height: 25px; }
+  body.is-compact-mode .compact-focus-ring-pct,
+  body.is-compact-mode .compact-cal-tile-month { font-size: 7px; }
+  body.is-compact-mode .compact-cal-tile-day { font-size: 13px; }
+  body.is-compact-mode .compact-world-row { font-size: 9px; }
+  body.is-compact-mode .compact-note-paper { padding: 1px 3px; }
+}
+
 /* Widget Detail Modal Stage (Shows Full Interactive Widget Inner, Hides Summary) */
 .widget-detail-modal-card {
   width: min(500px, 100%);
@@ -4705,6 +4818,774 @@ body.jiggle-mode .folder-detail-grid [data-placement-kind][data-placement-id] * 
   }
 }
 
+/* ==========================================================================
+   14. Night Mode, Descender-Safe Labels, Optional Widget Sizes (2x1/2x2/4x2) & Summary Extra
+   ========================================================================== */
 
+/* 14.1 App Label Descender Fix (g/y/p/q) & Short Window Protection */
+.app-label,
+.apps-grid.desktop-mixed-grid .app-label {
+  line-height: 1.28;
+  padding-block: 1px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
+body.is-compact-mode .apps-grid.desktop-mixed-grid .app-label {
+  line-height: 1.25;
+  padding-block: 1px;
+  flex-shrink: 0;
+}
+
+body.is-comfort-mode .apps-grid.desktop-mixed-grid .app-label {
+  line-height: 1.26;
+  padding-block: 1px;
+  flex-shrink: 0;
+}
+
+body[data-icon-size="large"] .app-label,
+body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-label {
+  opacity: 0;
+  height: 0;
+  padding-block: 0;
+  margin-top: -8px;
+  pointer-events: none;
+}
+
+@media (max-height: 720px) {
+  .apps-grid.desktop-mixed-grid .app-squircle {
+    width: calc(var(--compact-icon-size, 46px) - 4px);
+    height: calc(var(--compact-icon-size, 46px) - 4px);
+  }
+  body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-squircle {
+    width: calc(var(--compact-icon-size, 46px) + 2px);
+    height: calc(var(--compact-icon-size, 46px) + 2px);
+  }
+  .apps-grid.desktop-mixed-grid .app-item {
+    gap: 2px;
+  }
+  .widget-compact-summary {
+    --summary-icon-size: 13px;
+    padding: 3px 8px;
+    gap: 1px;
+  }
+  .widget-compact-top,
+  .widget-compact-primary,
+  .widget-compact-secondary {
+    flex-shrink: 0;
+  }
+  .widget-compact-top {
+    line-height: 1.05;
+  }
+  .widget-compact-primary {
+    font-size: 12.5px;
+    line-height: 1.15;
+  }
+  .widget-compact-secondary {
+    font-size: 9.5px;
+    line-height: 1.15;
+  }
+  .compact-focus-row,
+  .compact-cal-row {
+    gap: 6px;
+  }
+  .compact-focus-ring,
+  .compact-cal-tile {
+    width: 25px;
+    height: 25px;
+  }
+  .compact-cal-tile-day {
+    font-size: 12px;
+  }
+  .compact-note-paper {
+    padding: 1px 6px;
+    gap: 1px;
+  }
+  .compact-note-paper .widget-compact-primary {
+    font-size: 11px;
+    line-height: 1.1;
+  }
+  .compact-note-paper .widget-compact-secondary {
+    font-size: 9px;
+    line-height: 1.1;
+  }
+}
+
+/* 14.2 Responsive Widget Sizes: compact (2x1), square (2x2), wide (4x2) */
+.apps-grid.desktop-mixed-grid .ios-widget:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder,
+.apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="compact"]:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="compact"] {
+  grid-column: span 2;
+  grid-row: span 1;
+  height: var(--grid-row-height, 84px);
+  min-height: var(--grid-row-height, 84px);
+  max-height: var(--grid-row-height, 84px);
+}
+
+.apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="square"] {
+  grid-column: span 2;
+  grid-row: span 2;
+  height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
+  min-height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
+  max-height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
+}
+
+.apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="wide"] {
+  grid-column: span 4;
+  grid-row: span 2;
+  height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
+  min-height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
+  max-height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
+}
+
+/* Detail Modal Priority Overrides */
+.widget-in-detail-modal,
+.apps-grid.desktop-mixed-grid .ios-widget.widget-in-detail-modal,
+.ios-widget.widget-in-detail-modal[data-widget-size] {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  grid-column: 1 / -1 !important;
+  grid-row: auto !important;
+}
+
+/* 14.3 Widget Summary Extra & Inner Vertical Scroll (.widget-summary-extra / .widget-summary-scroll) */
+.widget-summary-extra {
+  display: none !important;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-summary-extra,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-summary-extra {
+  display: flex !important;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-height: 22px;
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.widget-in-detail-modal .widget-summary-extra {
+  display: none !important;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-summary,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-summary {
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-top,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-top,
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-primary,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-primary,
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-secondary,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-secondary {
+  flex-shrink: 0;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-primary {
+  font-size: 14px;
+  line-height: 1.1;
+}
+
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-primary {
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+/* On tight 2-row heights (e.g. ~116px in compact / short viewport), compact header & primary rows so .widget-summary-extra always has room for at least 1 visible/scrollable row */
+@media (max-height: 760px), (max-width: 768px) {
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-summary,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-summary {
+    padding: 5px 8px;
+    gap: 1px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-primary,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-primary {
+    font-size: 12.5px;
+    line-height: 1.08;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-secondary,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-secondary {
+    font-size: 9.5px;
+    line-height: 1.08;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-focus-ring,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-tile,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-focus-ring,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cal-tile {
+    width: 24px;
+    height: 24px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-tile-day,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cal-tile-day {
+    font-size: 12px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-note-paper,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-note-paper,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-world-rows,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-world-rows {
+    display: none;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-summary-extra,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-summary-extra {
+    margin-top: 1px;
+    padding-top: 2px;
+    gap: 2px;
+  }
+}
+
+@media (min-height: 820px) and (min-width: 769px) {
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-summary,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-summary {
+    padding: 9px 12px;
+    gap: 4px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-primary {
+    font-size: 15.5px;
+  }
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-primary {
+    font-size: 16.5px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-summary-extra,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-summary-extra {
+    gap: 4px;
+    margin-top: 3px;
+    padding-top: 4px;
+  }
+}
+
+.widget-summary-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  padding-right: 2px;
+  border-radius: 6px;
+}
+
+.widget-summary-scroll:focus-visible {
+  outline: 2px solid var(--summary-accent, #64d2ff);
+  outline-offset: 1px;
+}
+
+body:not(.jiggle-mode) .springboard-viewport .ios-widget .widget-summary-scroll,
+body:not(.jiggle-mode) .springboard-viewport .ios-widget .widget-summary-scroll * {
+  touch-action: pan-y !important;
+}
+
+/* Clock & Weather Extra (.summary-cw-metrics / .summary-cw-chip / .summary-cw-footer) */
+.summary-cw-metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.summary-cw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.11);
+  color: var(--summary-accent, #8fd8ff);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-cw-footer {
+  font-size: 9.5px;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Focus Timer Extra (.summary-focus-status-row / .summary-focus-bar-track / .summary-focus-bar-fill) */
+.summary-focus-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.84);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-focus-bar-track {
+  width: 100%;
+  height: 4px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.summary-focus-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--summary-accent, #d6b0ff), #5e5ce6);
+  transition: width 0.3s ease;
+}
+
+/* Monthly Calendar 7-Column Week Strip (.summary-cal-week-strip / .summary-cal-day-pill) */
+.summary-cal-week-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+}
+
+.summary-cal-day-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 1px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 9px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+
+.summary-cal-day-pill > span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-cal-day-pill > span:first-child {
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.summary-cal-day-pill > span:last-child {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.summary-cal-day-pill.is-outside {
+  opacity: 0.42;
+}
+
+.summary-cal-day-pill.is-today {
+  background: var(--summary-accent, #ff375f);
+  color: #0b0d17;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(255, 55, 95, 0.35);
+}
+
+.summary-cal-day-pill.is-today > span {
+  color: #0b0d17;
+  font-weight: 800;
+}
+
+/* Quick Note Paragraphs (.summary-note-paragraph / .summary-note-index / .summary-note-text) */
+.summary-note-paragraph {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.summary-note-paragraph + .summary-note-paragraph {
+  margin-top: 2px;
+}
+
+.summary-note-index {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--summary-accent, #ffe1a2);
+}
+
+.summary-note-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Todo Items (.summary-todo-item / .summary-todo-bullet / .summary-todo-text / .summary-todo-due) */
+.summary-todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  padding: 2.5px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 10px;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.summary-todo-item + .summary-todo-item {
+  margin-top: 2px;
+}
+
+.summary-todo-bullet {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--summary-accent, #89ecc3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  color: var(--summary-accent, #89ecc3);
+}
+
+.summary-todo-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-todo-due {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* World Clock Items (.summary-world-item / .summary-world-item-left / .summary-world-city / .summary-world-diff / .summary-world-time) */
+.summary-world-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2.5px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.summary-world-item + .summary-world-item {
+  margin-top: 2px;
+}
+
+.summary-world-item-left {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.summary-world-city {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-world-diff {
+  font-size: 8.5px;
+  color: rgba(255, 255, 255, 0.62);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.summary-world-time {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--summary-accent, #9ebcff);
+}
+
+/* 14.4 Edit Mode Widget Size Controls (.card-edit-actions / .widget-card-edit-actions / .widget-size-controls) */
+.card-edit-actions,
+.widget-card-edit-actions,
+.widget-size-controls {
+  display: none;
+}
+
+body.jiggle-mode .ios-widget:not(.widget-in-detail-modal) .card-edit-actions,
+body.jiggle-mode .ios-widget:not(.widget-in-detail-modal) .widget-card-edit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  left: 22px;
+  z-index: 16;
+  pointer-events: auto;
+  max-width: calc(100% - 26px);
+}
+
+body.jiggle-mode .ios-widget:not(.widget-in-detail-modal) .widget-size-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 3px;
+  max-width: 100%;
+  border-radius: 999px;
+  background: rgba(14, 17, 28, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  touch-action: manipulation !important;
+}
+
+body.jiggle-mode .ios-widget:not(.widget-in-detail-modal) .widget-size-controls *,
+body.jiggle-mode .ios-widget:not(.widget-in-detail-modal) .widget-size-btn {
+  touch-action: manipulation !important;
+  pointer-events: auto;
+}
+
+.widget-size-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 26px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.widget-size-btn:hover:not([disabled]) {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.widget-size-btn.active,
+.widget-size-btn.is-active,
+.widget-size-btn[aria-pressed="true"],
+.widget-size-btn[data-active="true"] {
+  background: #0a84ff;
+  border-color: rgba(255, 255, 255, 0.42);
+  color: #ffffff;
+}
+
+.widget-size-btn:focus-visible {
+  outline: 2px solid #64d2ff;
+  outline-offset: 1px;
+}
+
+.widget-size-btn[disabled] {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+.widget-size-btn-spec {
+  font-variant-numeric: tabular-nums;
+}
+
+/* On compact 2x1 cards or narrow screens, show concise spec (2×1/2×2/4×2) so controls never overflow card */
+.ios-widget[data-widget-size="compact"] .widget-size-btn-label,
+.ios-widget:not([data-widget-size="wide"]) .widget-size-btn-text {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  body.jiggle-mode .ios-widget:not(.widget-in-detail-modal) .card-edit-actions,
+  body.jiggle-mode .ios-widget:not(.widget-in-detail-modal) .widget-card-edit-actions {
+    top: 3px;
+    right: 3px;
+    left: 20px;
+    max-width: calc(100% - 23px);
+  }
+  .widget-size-btn {
+    min-width: 22px;
+    min-height: 20px;
+    padding: 2px 4.5px;
+    font-size: 9.5px;
+  }
+  .widget-size-btn-label,
+  .widget-size-btn-text {
+    display: none;
+  }
+}
+
+/* 14.5 Night Mode Theme (body[data-night-mode="true"]) & Top Bar Switch (.night-mode-pill) */
+.night-mode-icon[hidden] {
+  display: none;
+}
+
+body:not([data-night-mode="true"]) .night-mode-icon-sun,
+.night-mode-pill:not([aria-pressed="true"]) .night-mode-icon-sun {
+  display: none !important;
+}
+
+body:not([data-night-mode="true"]) .night-mode-icon-moon,
+.night-mode-pill:not([aria-pressed="true"]) .night-mode-icon-moon {
+  display: block !important;
+}
+
+body[data-night-mode="true"] .night-mode-icon-moon,
+.night-mode-pill[aria-pressed="true"] .night-mode-icon-moon {
+  display: none !important;
+}
+
+body[data-night-mode="true"] .night-mode-icon-sun,
+.night-mode-pill[aria-pressed="true"] .night-mode-icon-sun {
+  display: block !important;
+}
+
+.night-mode-pill[aria-pressed="true"],
+body[data-night-mode="true"] .night-mode-pill,
+body[data-night-mode="true"] .focus-pill {
+  background: rgba(88, 86, 214, 0.56);
+  border-color: rgba(168, 166, 255, 0.65);
+  color: #f5f6ff;
+  box-shadow: 0 0 14px rgba(94, 92, 230, 0.38);
+}
+
+body[data-night-mode="true"] {
+  background-color: #04060c;
+  color: #eef2ff;
+}
+
+body[data-night-mode="true"] .wallpaper-dimmer {
+  background: rgba(3, 5, 12, 0.54);
+}
+
+body[data-night-mode="true"].wallpaper-dimmed .wallpaper-dimmer {
+  background: rgba(2, 4, 10, 0.72);
+}
+
+body[data-night-mode="true"] .spotlight-bar {
+  background: rgba(10, 13, 22, 0.78);
+  border-color: rgba(185, 198, 235, 0.26);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 16px 36px rgba(0, 0, 0, 0.52);
+}
+
+body[data-night-mode="true"] .spotlight-wrapper:focus-within .spotlight-bar {
+  background: rgba(8, 10, 18, 0.9);
+  border-color: rgba(130, 180, 255, 0.52);
+}
+
+body[data-night-mode="true"] .engine-popover,
+body[data-night-mode="true"] .haptic-context-menu,
+body[data-night-mode="true"] .move-page-popover {
+  background: rgba(11, 14, 24, 0.94);
+  border-color: rgba(190, 205, 240, 0.24);
+}
+
+body[data-night-mode="true"] .category-tabs,
+body[data-night-mode="true"] .springboard-pagination {
+  background: rgba(10, 13, 22, 0.64);
+  border-color: rgba(190, 205, 240, 0.2);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-compact-summary,
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-inner {
+  background: linear-gradient(155deg, rgba(12, 16, 28, 0.84) 0%, rgba(7, 10, 18, 0.9) 100%);
+  border-color: rgba(190, 208, 245, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 12px 28px -8px rgba(0, 0, 0, 0.58);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-clock-weather .widget-compact-summary,
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-clock-weather .widget-inner {
+  background: linear-gradient(150deg, rgba(11, 29, 58, 0.86) 0%, rgba(7, 14, 32, 0.92) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-focus-timer .widget-compact-summary,
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-focus-timer .widget-inner {
+  background: linear-gradient(150deg, rgba(24, 18, 48, 0.86) 0%, rgba(11, 10, 24, 0.92) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-quick-note .widget-compact-summary,
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-quick-note .widget-inner {
+  background: linear-gradient(150deg, rgba(32, 26, 15, 0.86) 0%, rgba(16, 14, 10, 0.92) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-todo .widget-compact-summary,
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-todo .widget-inner {
+  background: linear-gradient(150deg, rgba(12, 34, 32, 0.86) 0%, rgba(8, 18, 20, 0.92) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-calendar .widget-compact-summary,
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-calendar .widget-inner {
+  background: linear-gradient(150deg, rgba(38, 15, 26, 0.86) 0%, rgba(18, 9, 16, 0.92) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-world-clock .widget-compact-summary,
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-world-clock .widget-inner {
+  background: linear-gradient(150deg, rgba(14, 24, 44, 0.86) 0%, rgba(8, 12, 22, 0.92) 100%);
+}
+
+body[data-night-mode="true"] .ios-dock {
+  background: rgba(10, 13, 22, 0.78);
+  border-color: rgba(190, 205, 240, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 24px 48px -10px rgba(0, 0, 0, 0.72);
+}
+
+body[data-night-mode="true"] .customize-sheet,
+body[data-night-mode="true"] .ios-modal-card,
+body[data-night-mode="true"] .settings-modal-card,
+body[data-night-mode="true"] .widget-detail-modal-card,
+body[data-night-mode="true"] .category-overflow-modal-card,
+body[data-night-mode="true"] .folder-detail-modal-card {
+  background: rgba(11, 14, 24, 0.94);
+  border-color: rgba(190, 208, 245, 0.26);
+  box-shadow: 0 24px 54px -12px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+body[data-night-mode="true"] .modal-backdrop {
+  background: rgba(2, 4, 10, 0.72);
+}
 
