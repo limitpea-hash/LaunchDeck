@@ -5,21 +5,15 @@ import {
   createStaticWidgetIcon,
   createSummaryExtra,
 } from './summary-helpers.js';
+import { getFocusSession } from './focus-session.js';
 
 export function mount(root, context) {
   clearElement(root);
   root.className = 'ios-widget widget-focus-timer';
 
-  let config = {
-    workMinutes: Math.min(180, Math.max(1, Number(context.config?.workMinutes) || 25)),
-    breakMinutes: Math.min(60, Math.max(1, Number(context.config?.breakMinutes) || 5)),
-  };
-
-  let phase = 'work'; // 'work' | 'break'
-  let running = false;
-  let totalSeconds = config.workMinutes * 60;
-  let remainingSeconds = totalSeconds;
-  let intervalId = null;
+  const session = getFocusSession(context.id || 'focus-timer', context.config);
+  let config = session.getConfig();
+  let { phase, running, totalSeconds, remainingSeconds } = session.getState();
 
   const focusDot = el('span', { className: 'focus-dot' });
   const phaseTitle = el('span', { className: 'focus-title', textContent: '专注番茄钟' });
@@ -140,13 +134,24 @@ export function mount(root, context) {
   const label = el('span', { className: 'widget-label', textContent: '专注计时' });
   root.append(inner, compactSummary, label);
 
-  function stopInterval() {
-    running = false;
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
+  function syncInputs() {
+    // Don't clobber values the user is editing in the open config form.
+    if (!configForm.hidden) return;
+    workInput.value = String(config.workMinutes);
+    breakInput.value = String(config.breakMinutes);
+  }
+
+  function applySessionState(state) {
+    const prevConfig = config;
+    ({ phase, running, totalSeconds, remainingSeconds } = state);
+    config = session.getConfig();
+    if (
+      prevConfig.workMinutes !== config.workMinutes ||
+      prevConfig.breakMinutes !== config.breakMinutes
+    ) {
+      syncInputs();
     }
-    setText(playBtn, '▶');
+    setText(playBtn, running ? '❚❚' : '▶');
     renderReadout();
   }
 
@@ -189,51 +194,22 @@ export function mount(root, context) {
 
   const onTogglePlay = (e) => {
     e.stopPropagation();
-    if (running) {
-      stopInterval();
-      return;
-    }
-    running = true;
-    setText(playBtn, '❚❚');
-    renderReadout();
-    intervalId = setInterval(() => {
-      if (remainingSeconds > 0) {
-        remainingSeconds -= 1;
-        renderReadout();
-      } else {
-        stopInterval();
-        phase = phase === 'work' ? 'break' : 'work';
-        totalSeconds = (phase === 'work' ? config.workMinutes : config.breakMinutes) * 60;
-        remainingSeconds = totalSeconds;
-        renderReadout();
-      }
-    }, 1000);
+    session.toggle();
   };
 
   const onReset = (e) => {
     e.stopPropagation();
-    stopInterval();
-    totalSeconds = (phase === 'work' ? config.workMinutes : config.breakMinutes) * 60;
-    remainingSeconds = totalSeconds;
-    renderReadout();
+    session.reset();
   };
 
   const onSelectWork = (e) => {
     e.stopPropagation();
-    stopInterval();
-    phase = 'work';
-    totalSeconds = config.workMinutes * 60;
-    remainingSeconds = totalSeconds;
-    renderReadout();
+    session.setPhase('work');
   };
 
   const onSelectBreak = (e) => {
     e.stopPropagation();
-    stopInterval();
-    phase = 'break';
-    totalSeconds = config.breakMinutes * 60;
-    remainingSeconds = totalSeconds;
-    renderReadout();
+    session.setPhase('break');
   };
 
   const onToggleCfg = (e) => {
@@ -245,16 +221,12 @@ export function mount(root, context) {
     e.stopPropagation();
     const nextWork = Math.min(180, Math.max(1, Math.round(Number(workInput.value) || 25)));
     const nextBreak = Math.min(60, Math.max(1, Math.round(Number(breakInput.value) || 5)));
-    config = { workMinutes: nextWork, breakMinutes: nextBreak };
+    const nextConfig = { workMinutes: nextWork, breakMinutes: nextBreak };
     workInput.value = String(nextWork);
     breakInput.value = String(nextBreak);
-    if (!running) {
-      totalSeconds = (phase === 'work' ? config.workMinutes : config.breakMinutes) * 60;
-      remainingSeconds = totalSeconds;
-    }
     configForm.hidden = true;
-    renderReadout();
-    context.saveWidgetConfig?.(config);
+    session.setConfig(nextConfig);
+    context.saveWidgetConfig?.(session.getConfig());
   };
 
   playBtn.addEventListener('click', onTogglePlay);
@@ -264,26 +236,20 @@ export function mount(root, context) {
   customCfgBtn.addEventListener('click', onToggleCfg);
   saveCfgBtn.addEventListener('click', onSaveCfg);
 
-  renderReadout();
+  // Subscribe immediately renders the current shared state (no reset on remount).
+  const unsubscribe = session.subscribe(applySessionState);
+  syncInputs();
 
   return {
     update(data = {}) {
       if (data.config) {
-        const nextWork = Math.min(180, Math.max(1, Math.round(Number(data.config.workMinutes) || config.workMinutes)));
-        const nextBreak = Math.min(60, Math.max(1, Math.round(Number(data.config.breakMinutes) || config.breakMinutes)));
-        const changed = nextWork !== config.workMinutes || nextBreak !== config.breakMinutes;
-        config = { workMinutes: nextWork, breakMinutes: nextBreak };
-        workInput.value = String(nextWork);
-        breakInput.value = String(nextBreak);
-        if (changed && !running) {
-          totalSeconds = (phase === 'work' ? config.workMinutes : config.breakMinutes) * 60;
-          remainingSeconds = totalSeconds;
-        }
-        renderReadout();
+        // setConfig is a no-op (no reset, no notification) when values are unchanged.
+        session.setConfig(data.config);
       }
     },
     destroy() {
-      stopInterval();
+      // Session keeps running independently of this mount.
+      unsubscribe();
       playBtn.removeEventListener('click', onTogglePlay);
       resetBtn.removeEventListener('click', onReset);
       workModeBtn.removeEventListener('click', onSelectWork);

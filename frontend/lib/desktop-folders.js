@@ -1,3 +1,8 @@
+import {
+  attachOptionalPlacementCell,
+  normalizePlacementCell,
+} from './desktop-cells.js';
+
 const FOLDER_ID_RE = /^folder_[a-zA-Z0-9_-]{1,64}$/;
 const SITE_ID_RE = /^[a-zA-Z0-9_-]{1,100}$/;
 const CONTROL_CHARS_RE = /[\u0000-\u001F\u007F]/g;
@@ -182,10 +187,12 @@ export function finalizeDesktopFoldersAndPlacements(desktop, { forceV2 = false }
       } else if (item.kind === 'site' || item.kind === 'widget') {
         const id = String(item.id || '').trim();
         if (!isValidFolderSiteId(id)) continue;
+        const normalizedCell = normalizePlacementCell(item.cell, item.kind);
         expandedItems.push({
           kind: item.kind,
           id,
           pageId: page.id,
+          ...(normalizedCell ? { cell: normalizedCell } : {}),
         });
       }
     }
@@ -230,6 +237,7 @@ export function finalizeDesktopFoldersAndPlacements(desktop, { forceV2 = false }
 
     // Second pass: filter top-level sites that are already claimed by a folder or earlier top-level site on this page
     const pageSeenKeys = new Set();
+    const pageSeenCells = new Set();
     let order = 0;
     for (const entry of cleanedFirstPass) {
       if (entry.kind === 'site') {
@@ -255,12 +263,18 @@ export function finalizeDesktopFoldersAndPlacements(desktop, { forceV2 = false }
         pageSeenKeys.add(`folder:${entry.id}`);
       }
 
-      nextPlacements.push({
-        kind: entry.kind,
-        id: entry.id,
-        pageId: validPageIds.has(page.id) ? page.id : 'all',
-        order: order++,
-      });
+      nextPlacements.push(
+        attachOptionalPlacementCell(
+          {
+            kind: entry.kind,
+            id: entry.id,
+            pageId: validPageIds.has(page.id) ? page.id : 'all',
+            order: order++,
+          },
+          entry.cell,
+          pageSeenCells
+        )
+      );
     }
   }
 
@@ -391,12 +405,17 @@ export function createSiteFolder(
       ) {
         continue;
       }
-      nextPlacements.push({
-        kind: item.kind,
-        id: item.id,
-        pageId: page.id,
-        order: nextPlacements.length,
-      });
+      nextPlacements.push(
+        attachOptionalPlacementCell(
+          {
+            kind: item.kind,
+            id: item.id,
+            pageId: page.id,
+            order: nextPlacements.length,
+          },
+          item.cell
+        )
+      );
     }
   }
 
@@ -678,12 +697,17 @@ export function moveFolderSiteToPage(
     const list =
       page.id === resolvedToPageId ? pagePlacements : getPageOrderedPlacements(draft, page.id);
     list.forEach((item, idx) => {
-      nextPlacements.push({
-        kind: item.kind,
-        id: item.id,
-        pageId: page.id,
-        order: idx,
-      });
+      nextPlacements.push(
+        attachOptionalPlacementCell(
+          {
+            kind: item.kind,
+            id: item.id,
+            pageId: page.id,
+            order: idx,
+          },
+          item.cell
+        )
+      );
     });
   }
 
@@ -722,12 +746,17 @@ export function dissolveSiteFolder(desktop, { folderId } = {}) {
           });
         }
       } else {
-        nextPlacements.push({
-          kind: item.kind,
-          id: item.id,
-          pageId: page.id,
-          order: nextPlacements.length,
-        });
+        nextPlacements.push(
+          attachOptionalPlacementCell(
+            {
+              kind: item.kind,
+              id: item.id,
+              pageId: page.id,
+              order: nextPlacements.length,
+            },
+            item.cell
+          )
+        );
       }
     }
   }

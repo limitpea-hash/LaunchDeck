@@ -177,6 +177,41 @@ body.wallpaper-dimmed .wallpaper-dimmer {
 }
 
 /* Wallpaper Presets */
+body[data-night-mode="true"]:not([data-wallpaper]) .wallpaper-stage,
+body[data-night-mode="true"][data-wallpaper="ios18-bloom"] .wallpaper-stage {
+  background: radial-gradient(circle at 50% 18%, #0c1738 0%, #050918 58%, #020308 100%);
+}
+body[data-night-mode="true"]:not([data-wallpaper]) .arch-top,
+body[data-night-mode="true"][data-wallpaper="ios18-bloom"] .arch-top {
+  background: radial-gradient(ellipse at center, #0e6cc4 0%, #202d88 46%, rgba(8, 12, 36, 0) 72%);
+  opacity: 0.72;
+}
+body[data-night-mode="true"]:not([data-wallpaper]) .arch-bottom,
+body[data-night-mode="true"][data-wallpaper="ios18-bloom"] .arch-bottom {
+  background: radial-gradient(ellipse at center, #7b1fa2 0%, #2b1868 46%, rgba(6, 9, 26, 0) 72%);
+  opacity: 0.7;
+}
+body[data-night-mode="true"]:not([data-wallpaper]) .orb-1,
+body[data-night-mode="true"][data-wallpaper="ios18-bloom"] .orb-1 {
+  background: radial-gradient(circle, #1864ab 0%, transparent 70%);
+  opacity: 0.5;
+}
+body[data-night-mode="true"]:not([data-wallpaper]) .orb-2,
+body[data-night-mode="true"][data-wallpaper="ios18-bloom"] .orb-2 {
+  background: radial-gradient(circle, #702459 0%, transparent 70%);
+  opacity: 0.48;
+}
+body[data-night-mode="true"]:not([data-wallpaper]) .orb-3,
+body[data-night-mode="true"][data-wallpaper="ios18-bloom"] .orb-3 {
+  background: radial-gradient(circle, #362f78 0%, transparent 70%);
+  opacity: 0.52;
+}
+body[data-night-mode="true"]:not([data-wallpaper]) .orb-4,
+body[data-night-mode="true"][data-wallpaper="ios18-bloom"] .orb-4 {
+  background: radial-gradient(circle, #1a5276 0%, transparent 70%);
+  opacity: 0.46;
+}
+
 body[data-wallpaper="ios18-pink"] .wallpaper-stage {
   background: radial-gradient(circle at 50% 20%, #3d0f3b 0%, #1a0926 55%, #09040e 100%);
 }
@@ -234,11 +269,12 @@ body[data-wallpaper="titanium-dark"] .arch-bottom {
 .springboard-shell {
   position: relative;
   z-index: 2;
-  max-width: 1180px;
+  width: 100%;
+  max-width: none;
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: max(12px, env(safe-area-inset-top)) 24px calc(126px + env(safe-area-inset-bottom));
+  padding: max(12px, env(safe-area-inset-top)) clamp(28px, calc(6.7vw - 25.6px), 180px) calc(126px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -301,69 +337,82 @@ body[data-wallpaper="titanium-dark"] .arch-bottom {
   border-color: rgba(165, 164, 255, 0.55);
 }
 
-/* Dynamic Island Center Pill */
+/* Dynamic Island Center Pill (Unread Notification Capsule) */
 .status-center {
   display: flex;
   justify-content: center;
+  min-width: 0;
+}
+
+.dynamic-island[hidden],
+.notification-island-pill[hidden] {
+  display: none !important;
 }
 
 .dynamic-island {
   position: relative;
-  background: rgba(8, 9, 14, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(360px, 46vw);
+  background: rgba(14, 16, 23, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 5px 11px 5px 6px;
+  color: #f4f6fb;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: transform 0.4s var(--spring-bouncy), padding 0.35s var(--spring-snappy), box-shadow 0.35s ease;
+  transition: transform 0.28s var(--spring-bouncy), box-shadow 0.25s ease, border-color 0.2s ease;
 }
 
 .dynamic-island:hover {
-  transform: scale(1.045);
-  box-shadow: 0 12px 32px rgba(0, 122, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transform: scale(1.03);
+  border-color: rgba(100, 210, 255, 0.42);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
-.island-compact {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.92);
+.dynamic-island:focus-visible {
+  outline: 2px solid #64d2ff;
+  outline-offset: 2px;
 }
 
-.island-pulse {
-  width: 8px;
-  height: 8px;
-  flex-shrink: 0;
+.island-source-avatar {
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: conic-gradient(from 0deg, #007aff, #af52de, #ff2d55, #ff9500, #30d158, #007aff);
-  box-shadow: 0 0 10px #ff2d55;
-  animation: spinHue 4s linear infinite;
-}
-
-.island-kbd {
-  font-family: var(--font-sans);
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.92);
-  white-space: nowrap;
+  background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #7ad3ff;
+  font-size: 11px;
+  font-weight: 760;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  cursor: pointer;
 }
 
-.island-kbd.online {
-  background: rgba(48, 209, 88, 0.24);
-  color: #30d158;
-  border: 1px solid rgba(48, 209, 88, 0.45);
+.island-source-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.92);
 }
 
-@keyframes spinHue {
-  to { transform: rotate(360deg); }
+.island-unread-badge {
+  flex-shrink: 0;
+  padding: 1.5px 7px;
+  border-radius: 999px;
+  background: rgba(10, 132, 255, 0.24);
+  border: 1px solid rgba(100, 210, 255, 0.36);
+  color: #8fd8ff;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .status-right {
@@ -1531,6 +1580,30 @@ body.jiggle-mode .delete-badge {
   z-index: 12;
 }
 
+/* Edit mode only: allow bounded 14px top protrusion for badges/shadows/jiggle while keeping left/right/bottom clipped and hit-testable */
+body.jiggle-mode .springboard-stage,
+body.jiggle-mode .springboard-viewport,
+body.jiggle-mode .springboard-page {
+  overflow: visible;
+  clip-path: inset(-14px 0 0);
+}
+
+/* Desktop/mobile grid widget cards in edit mode (excluding detail modal): lift root overflow/paint clipping so direct-child delete badge is visible & hit-testable */
+body.jiggle-mode .springboard-page .apps-grid.desktop-mixed-grid > .ios-widget:not(.widget-in-detail-modal) {
+  overflow: visible;
+  contain: none;
+}
+
+body.jiggle-mode .springboard-page .apps-grid.desktop-mixed-grid > .ios-widget:not(.widget-in-detail-modal) > .widget-delete-badge {
+  top: -8px;
+  left: 0;
+  width: 26px;
+  height: 26px;
+  z-index: 20;
+  pointer-events: auto;
+  touch-action: manipulation !important;
+}
+
 .app-item.drag-over-card,
 .ios-widget.drag-over-card {
   outline: 2px solid #0a84ff;
@@ -1718,6 +1791,7 @@ body.jiggle-mode .ios-widget {
 }
 
 .ios-dock {
+  position: relative;
   pointer-events: auto;
   display: flex;
   align-items: center;
@@ -1822,12 +1896,20 @@ body.jiggle-mode .ios-widget {
   border-radius: 14px;
 }
 
-.dock-item:hover {
-  transform: translateY(-8px) scale(1.13);
+.dock-magnification {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 
-.dock-sites-strip .dock-item:hover {
-  transform: translateY(-3px) scale(1.06);
+.dock-item.is-dock-mirrored > .app-squircle {
+  opacity: 0;
+}
+
+.dock-magnified-icon {
+  position: absolute;
+  transform-origin: center bottom;
 }
 
 .dock-item:active {
@@ -1836,7 +1918,8 @@ body.jiggle-mode .ios-widget {
 
 .dock-tooltip {
   position: absolute;
-  top: -36px;
+  top: -56px;
+  z-index: 2;
   padding: 4px 10px;
   border-radius: 8px;
   background: rgba(20, 22, 32, 0.85);
@@ -2046,6 +2129,12 @@ body.jiggle-mode .ios-widget {
   background: #ff9f0a;
   color: #111;
   border-color: #ff9f0a;
+}
+
+.follow-system-night-btn.active {
+  background: #0a84ff;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.36);
 }
 
 .tint-sliders-panel {
@@ -2580,17 +2669,25 @@ body[data-navigation-importing="true"] .springboard-shell {
   }
 
   .dynamic-island {
-    padding: 4px 8px;
-    max-width: 156px;
+    padding: 3.5px 8px 3.5px 5px;
+    max-width: 176px;
     gap: 5px;
   }
 
-  .island-text {
+  .island-source-avatar {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+
+  .island-source-name {
     font-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 72px;
+    max-width: 78px;
+  }
+
+  .island-unread-badge {
+    padding: 1px 5.5px;
+    font-size: 10px;
   }
 
   .status-right {
@@ -2705,8 +2802,8 @@ body[data-navigation-importing="true"] .springboard-shell {
 }
 
 @media (max-width: 420px) {
-  .island-text {
-    display: none;
+  .island-source-name {
+    max-width: 58px;
   }
 }
 
@@ -2720,10 +2817,10 @@ body[data-navigation-importing="true"] .springboard-shell {
     padding-right: 8px;
   }
   .dynamic-island {
-    max-width: 155px;
+    max-width: 148px;
   }
-  .island-text {
-    max-width: 88px;
+  .island-source-name {
+    max-width: 48px;
   }
 }
 
@@ -3205,7 +3302,7 @@ body[data-navigation-importing="true"] .springboard-shell {
 
 .settings-tabs-nav {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   border-radius: 13px;
@@ -3309,10 +3406,258 @@ body[data-navigation-importing="true"] .springboard-shell {
   color: #ffffff;
 }
 
+.settings-tab-panel[hidden] {
+  display: none !important;
+}
+
 .settings-tab-panel {
   overflow-y: auto;
   padding-right: 4px;
   max-height: 62vh;
+}
+
+/* Notification Subscriptions & Inbox History (Settings Tab) */
+.notification-header-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notification-form-grid {
+  grid-template-columns: minmax(140px, 1fr) minmax(200px, 1.5fr);
+  margin-bottom: 6px;
+}
+
+.notification-inbox-list,
+.notification-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 230px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.notification-empty-hint {
+  padding: 12px 10px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.68);
+  text-align: center;
+}
+
+.notification-source-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.notification-source-row.has-error {
+  border-color: rgba(255, 105, 97, 0.42);
+  background: rgba(255, 69, 58, 0.08);
+}
+
+.notification-source-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.notification-source-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.notification-source-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(10, 132, 255, 0.22);
+  border: 1px solid rgba(100, 210, 255, 0.34);
+  color: #8fd8ff;
+  font-size: 11px;
+  font-weight: 750;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notification-source-avatar.is-sm {
+  width: 17px;
+  height: 17px;
+  font-size: 9.5px;
+}
+
+.notification-source-name {
+  font-size: 13px;
+  font-weight: 650;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notification-source-url {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: rgba(255, 255, 255, 0.66);
+  word-break: break-all;
+}
+
+.notification-source-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.notification-source-error {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #ff6961;
+  margin-top: 2px;
+}
+
+.notification-source-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.notification-msg-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+}
+
+.notification-msg-card.is-unread {
+  background: rgba(10, 132, 255, 0.11);
+  border-color: rgba(100, 210, 255, 0.34);
+}
+
+.notification-msg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notification-msg-source-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.notification-msg-source {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.88);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notification-msg-state-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.notification-msg-state-pill.is-unread {
+  background: rgba(10, 132, 255, 0.28);
+  color: #8fd8ff;
+}
+
+.notification-msg-state-pill.is-read {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.56);
+}
+
+.notification-msg-time {
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.56);
+  flex-shrink: 0;
+}
+
+.notification-msg-title {
+  font-size: 13px;
+  font-weight: 680;
+  color: #ffffff;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.notification-msg-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.78);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.notification-msg-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.notification-msg-open-link {
+  text-decoration: none;
+}
+
+#notificationSettingsStatusBox[data-status-tone="error"] {
+  background: rgba(255, 69, 58, 0.14);
+  border-color: rgba(255, 105, 97, 0.38);
+}
+
+#notificationSettingsStatusBox[data-status-tone="error"] .api-hint-dot {
+  background: #ff453a;
+}
+
+#notificationSettingsStatusBox[data-status-tone="loading"] .api-hint-dot {
+  background: #64d2ff;
+}
+
+@media (max-width: 720px) {
+  .notification-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dynamic-island,
+  .dynamic-island:hover,
+  .settings-tab-btn,
+  .notification-msg-card {
+    transition: none !important;
+    transform: none !important;
+    animation: none !important;
+  }
 }
 
 .settings-panel-header,
@@ -3451,12 +3796,16 @@ body[data-navigation-importing="true"] .springboard-shell {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 150px;
+  max-height: 196px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 2px;
 }
 
 .city-result-item {
   width: 100%;
+  flex-shrink: 0;
   text-align: left;
   padding: 8px 11px;
   border-radius: 10px;
@@ -3469,6 +3818,14 @@ body[data-navigation-importing="true"] .springboard-shell {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.city-result-item:hover,
+.city-result-item:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(100, 210, 255, 0.42);
+  outline: none;
 }
 
 .city-result-name {
@@ -3680,11 +4037,12 @@ body {
 }
 
 .springboard-shell {
-  max-width: 1240px;
+  width: 100%;
+  max-width: none;
   height: 100vh;
   height: 100dvh;
   min-height: 0;
-  padding: max(8px, env(safe-area-inset-top)) 18px calc(86px + env(safe-area-inset-bottom));
+  padding: max(8px, env(safe-area-inset-top)) clamp(28px, calc(6.7vw - 25.6px), 180px) calc(86px + env(safe-area-inset-bottom));
   gap: 8px;
   overflow: hidden;
 }
@@ -3793,14 +4151,41 @@ body {
 
 /* Dynamic Single-Screen Mixed Grid driven by display-mode.js CSS Variables */
 .apps-grid.desktop-mixed-grid {
+  --grid-track-width: min(
+    var(--grid-max-track-width, 106px),
+    calc(
+      (100cqw - (var(--grid-cols, 8) - 1) * var(--grid-col-gap, 12px)) /
+        var(--grid-cols, 8)
+    )
+  );
+  --widget-two-col-span-size: calc(
+    var(--grid-track-width, 96px) * 2 + var(--grid-col-gap, 12px)
+  );
+  --widget-two-row-span-size: calc(
+    var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px)
+  );
+  --widget-square-size: min(
+    var(--widget-two-col-span-size),
+    var(--widget-two-row-span-size)
+  );
+  container-type: inline-size;
   flex: 1;
   min-height: 0;
   width: 100%;
-  grid-template-columns: repeat(var(--grid-cols, 8), minmax(0, 1fr));
+  max-width: calc(
+    var(--grid-cols, 8) * var(--grid-max-track-width, 106px) +
+      (var(--grid-cols, 8) - 1) * var(--grid-col-gap, 12px)
+  );
+  margin-inline: auto;
+  grid-template-columns: repeat(
+    var(--grid-cols, 8),
+    minmax(0, var(--grid-max-track-width, 106px))
+  );
   grid-auto-rows: var(--grid-row-height, 84px);
   grid-auto-flow: row;
   row-gap: var(--grid-row-gap, 10px);
   column-gap: var(--grid-col-gap, 12px);
+  justify-content: center;
   align-content: start;
   justify-items: center;
   align-items: stretch;
@@ -3854,7 +4239,7 @@ select,
 /* Compact & Comfort Grid Sizing for App Items */
 .apps-grid.desktop-mixed-grid .app-item {
   width: 100%;
-  max-width: 92px;
+  max-width: var(--grid-max-track-width, 104px);
   height: var(--grid-row-height, 84px);
   justify-content: center;
   gap: 4px;
@@ -3894,7 +4279,7 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-squircle {
 
 .apps-grid.desktop-mixed-grid .app-item-placeholder {
   width: 100%;
-  max-width: 92px;
+  max-width: var(--grid-max-track-width, 104px);
   height: var(--grid-row-height, 84px);
   min-height: var(--grid-row-height, 84px);
   border-radius: 18px;
@@ -3908,85 +4293,193 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-squircle {
 }
 
 .widget-compact-summary {
+  --summary-surface: #1d293f;
+  --summary-ink: #ffffff;
+  --summary-muted: rgba(255, 255, 255, 0.72);
+  --summary-accent: #5ac8fa;
+  --summary-accent-soft: rgba(90, 200, 250, 0.16);
+  --summary-border: rgba(255, 255, 255, 0.14);
+  --summary-divider: rgba(255, 255, 255, 0.14);
+  --summary-icon-size: 16px;
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
-  border-radius: 18px;
-  padding: 7px 11px;
+  border-radius: 20px;
+  padding: 8px 11px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: 2px;
   overflow: hidden;
-  background: rgba(24, 28, 42, 0.56);
-  backdrop-filter: blur(28px) saturate(190%);
-  -webkit-backdrop-filter: blur(28px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  box-shadow: var(--glass-specular), 0 8px 20px -6px rgba(0, 0, 0, 0.32);
-  transition: transform 0.25s var(--spring-snappy), border-color 0.2s ease, background 0.25s ease;
+  font-family: var(--font-sans);
+  color: var(--summary-ink);
+  background: var(--summary-surface);
+  border: 1px solid var(--summary-border);
+  box-shadow: 0 6px 18px -6px rgba(8, 12, 24, 0.24), 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: transform 0.24s var(--spring-snappy), border-color 0.2s ease, background 0.24s ease, box-shadow 0.24s ease;
 }
 
-.widget-clock-weather .widget-compact-summary {
-  background: linear-gradient(145deg, rgba(16, 48, 98, 0.64) 0%, rgba(12, 22, 52, 0.72) 100%);
+/* 1. Clock & Weather: Deep Sky / Navy Solid & Subtle Sky Transition */
+.widget-clock-weather .widget-compact-summary,
+.compact-layout-clock-weather {
+  --summary-surface: linear-gradient(160deg, #1b4b8a 0%, #102a56 100%);
+  --summary-ink: #ffffff;
+  --summary-muted: rgba(226, 240, 255, 0.78);
+  --summary-accent: #7ad3ff;
+  --summary-accent-soft: rgba(122, 211, 255, 0.16);
+  --summary-border: rgba(160, 215, 255, 0.2);
+  --summary-divider: rgba(255, 255, 255, 0.15);
+  background: var(--summary-surface);
 }
-.widget-focus-timer .widget-compact-summary {
-  background: linear-gradient(145deg, rgba(38, 26, 72, 0.64) 0%, rgba(18, 16, 38, 0.74) 100%);
+
+.compact-layout-clock-weather[data-day-phase="night"] {
+  --summary-surface: linear-gradient(160deg, #132952 0%, #0b1630 100%);
 }
-.widget-quick-note .widget-compact-summary {
-  background: linear-gradient(145deg, rgba(48, 40, 22, 0.62) 0%, rgba(26, 23, 18, 0.74) 100%);
+
+/* 2. Focus Timer: Soft Lilac Light Surface (Night: Smoky Purple) */
+.widget-focus-timer .widget-compact-summary,
+.compact-layout-focus-timer {
+  --summary-surface: #f3effb;
+  --summary-ink: #221838;
+  --summary-muted: #6e5f8e;
+  --summary-accent: #6d4aff;
+  --summary-accent-soft: rgba(109, 74, 255, 0.13);
+  --summary-border: rgba(109, 74, 255, 0.16);
+  --summary-divider: rgba(34, 24, 56, 0.1);
+  background: var(--summary-surface);
 }
-.widget-todo .widget-compact-summary {
-  background: linear-gradient(145deg, rgba(20, 54, 48, 0.64) 0%, rgba(14, 28, 30, 0.74) 100%);
+
+/* 3. Quick Note: Light Cream Paper Surface with Top Yellow Strip */
+.widget-quick-note .widget-compact-summary,
+.compact-layout-quick-note {
+  --summary-surface: #fcf7ea;
+  --summary-ink: #2c2416;
+  --summary-muted: #7d6e52;
+  --summary-accent: #e09f1f;
+  --summary-accent-soft: rgba(224, 159, 31, 0.15);
+  --summary-border: rgba(180, 146, 84, 0.24);
+  --summary-divider: rgba(160, 130, 74, 0.18);
+  background:
+    linear-gradient(180deg, #f3be3c 0%, #f3be3c 4px, transparent 4px),
+    var(--summary-surface);
+  padding-top: 9px;
 }
-.widget-calendar .widget-compact-summary {
-  background: linear-gradient(145deg, rgba(58, 22, 36, 0.64) 0%, rgba(26, 14, 24, 0.74) 100%);
+
+/* 4. Todo List: Crisp Gray-White / Soft Mint Surface */
+.widget-todo .widget-compact-summary,
+.compact-layout-todo {
+  --summary-surface: #f2f8f5;
+  --summary-ink: #132a23;
+  --summary-muted: #537368;
+  --summary-accent: #109868;
+  --summary-accent-soft: rgba(16, 152, 104, 0.14);
+  --summary-border: rgba(16, 152, 104, 0.18);
+  --summary-divider: rgba(19, 42, 35, 0.1);
+  background: var(--summary-surface);
 }
-.widget-world-clock .widget-compact-summary {
-  background: linear-gradient(145deg, rgba(22, 36, 62, 0.64) 0%, rgba(14, 18, 32, 0.76) 100%);
+
+/* 5. Monthly Calendar: Warm White Paper Surface, Ink Number & Coral Red Accent */
+.widget-calendar .widget-compact-summary,
+.compact-layout-calendar {
+  --summary-surface: #fbf9f5;
+  --summary-ink: #1c1b1a;
+  --summary-muted: #746f6a;
+  --summary-accent: #e8463a;
+  --summary-accent-soft: rgba(232, 70, 58, 0.12);
+  --summary-border: rgba(28, 27, 26, 0.11);
+  --summary-divider: rgba(28, 27, 26, 0.09);
+  background: var(--summary-surface);
+}
+
+/* 6. World Clock: Deep Teal / Slate Blue Surface */
+.widget-world-clock .widget-compact-summary,
+.compact-layout-world-clock {
+  --summary-surface: linear-gradient(155deg, #1d3547 0%, #142534 100%);
+  --summary-ink: #f3f8fc;
+  --summary-muted: rgba(208, 226, 242, 0.74);
+  --summary-accent: #68c6ea;
+  --summary-accent-soft: rgba(104, 198, 234, 0.15);
+  --summary-border: rgba(145, 204, 236, 0.2);
+  --summary-divider: rgba(255, 255, 255, 0.12);
+  background: var(--summary-surface);
 }
 
 body[data-icon-mode="tinted"] .widget-compact-summary {
-  background: linear-gradient(155deg, var(--tint-bg-dark) 0%, var(--tint-bg-deep) 100%) !important;
-  border-color: hsla(var(--tint-h), var(--tint-s), 65%, 0.35);
+  --summary-surface: linear-gradient(155deg, var(--tint-bg-dark) 0%, var(--tint-bg-deep) 100%);
+  --summary-ink: #ffffff;
+  --summary-muted: rgba(255, 255, 255, 0.74);
+  --summary-accent: var(--tint-color-bright);
+  --summary-accent-soft: hsla(var(--tint-h), var(--tint-s), 65%, 0.18);
+  --summary-border: hsla(var(--tint-h), var(--tint-s), 65%, 0.34);
+  --summary-divider: hsla(var(--tint-h), var(--tint-s), 65%, 0.18);
+  background: var(--summary-surface) !important;
+  border-color: var(--summary-border);
+  color: var(--summary-ink);
 }
 
 .ios-widget:hover .widget-compact-summary {
-  border-color: rgba(255, 255, 255, 0.42);
-  transform: translateY(-2px);
+  transform: translateY(-1.5px);
+  box-shadow: 0 10px 24px -8px rgba(8, 12, 24, 0.32), 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
+/* Shared Top Row: Subtle Kicker, No Corner Arrow Pill */
 .widget-compact-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 4px;
   min-width: 0;
+  flex-shrink: 0;
+}
+
+.widget-compact-kicker-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.widget-compact-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: var(--summary-icon-size);
+  height: var(--summary-icon-size);
+  color: var(--summary-accent);
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.widget-compact-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .widget-compact-kicker {
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 650;
   letter-spacing: 0.01em;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--summary-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .widget-compact-badge {
-  font-size: 9px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.52);
-  white-space: nowrap;
-  flex-shrink: 0;
+  display: none !important;
 }
 
 .widget-compact-primary {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 760;
   font-variant-numeric: tabular-nums;
-  line-height: 1.15;
-  color: #ffffff;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  color: var(--summary-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3994,34 +4487,18 @@ body[data-icon-mode="tinted"] .widget-compact-summary {
 
 .widget-compact-secondary {
   font-size: 10.5px;
-  font-weight: 500;
+  font-weight: 540;
   line-height: 1.15;
-  color: rgba(255, 255, 255, 0.76);
+  color: var(--summary-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Distinct compact widget summaries */
-.widget-compact-summary { --summary-accent: #9dccff; --summary-icon-size: 17px; }
-.compact-layout-clock-weather { --summary-accent: #8fd8ff; }
-.compact-layout-focus-timer { --summary-accent: #d6b0ff; }
-.compact-layout-calendar { --summary-accent: #ffa9b8; }
-.compact-layout-world-clock { --summary-accent: #9ebcff; }
-.compact-layout-todo { --summary-accent: #89ecc3; }
-.compact-layout-quick-note { --summary-accent: #ffe1a2; }
-body[data-icon-mode="tinted"] .widget-compact-summary { --summary-accent: var(--tint-color-bright); }
-
-.widget-compact-kicker-wrap { display: flex; align-items: center; gap: 5px; min-width: 0; }
-.widget-compact-icon {
-  display: grid;
-  flex: 0 0 auto;
-  place-items: center;
-  width: var(--summary-icon-size);
-  height: var(--summary-icon-size);
-  color: var(--summary-accent);
+/* 1. Clock & Weather Compact & Readout (.compact-layout-clock-weather / .compact-cw-readout) */
+.compact-layout-clock-weather .widget-compact-top {
+  display: none;
 }
-.widget-compact-icon svg { display: block; width: 100%; height: 100%; }
 
 .compact-cw-row,
 .compact-cw-meta,
@@ -4030,14 +4507,56 @@ body[data-icon-mode="tinted"] .widget-compact-summary { --summary-accent: var(--
 .compact-world-row {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
 }
+
 .compact-cw-row,
 .compact-focus-body,
-.compact-world-row { justify-content: space-between; }
-.compact-cw-time { font-size: 1.2em; }
-.compact-cw-temp { color: var(--summary-accent); }
+.compact-world-row {
+  justify-content: space-between;
+}
+
+.compact-cw-row {
+  align-items: baseline;
+  gap: 8px;
+}
+
+.compact-cw-time {
+  font-size: 23px;
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--summary-ink);
+}
+
+.compact-cw-readout {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  color: var(--summary-ink);
+}
+
+.compact-cw-readout .widget-compact-icon.is-weather {
+  width: 17px;
+  height: 17px;
+  color: var(--summary-accent);
+}
+
+.compact-cw-temp {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--summary-ink);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
 .compact-cw-city,
 .compact-cw-cond,
 .compact-world-city {
@@ -4046,18 +4565,72 @@ body[data-icon-mode="tinted"] .widget-compact-summary { --summary-accent: var(--
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.compact-cw-cond { color: var(--summary-accent); }
-.compact-cw-temp, .compact-cw-dot, .compact-world-time { flex-shrink: 0; }
-.compact-focus-meta, .compact-cal-meta { min-width: 0; }
+
+.compact-cw-city {
+  color: var(--summary-ink);
+  font-weight: 620;
+}
+
+.compact-cw-cond {
+  color: var(--summary-muted);
+  font-weight: 540;
+}
+
+.compact-cw-dot,
+.compact-world-time {
+  flex-shrink: 0;
+}
+
+/* 2. Focus Timer Compact (.compact-layout-focus-timer / .compact-focus-ring) */
+.compact-layout-focus-timer .widget-compact-top {
+  display: none;
+}
+
+.compact-focus-body {
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+
+.compact-focus-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.compact-layout-focus-timer .compact-focus-meta .widget-compact-primary,
+.compact-focus-time {
+  font-size: 24px;
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  color: var(--summary-ink);
+}
+
+.compact-layout-focus-timer .compact-focus-meta .widget-compact-secondary,
+.compact-focus-state {
+  color: var(--summary-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
 .compact-focus-ring {
   display: grid;
   flex: 0 0 auto;
   position: relative;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   place-items: center;
   color: var(--summary-accent);
+  background: var(--summary-accent-soft);
 }
+
 .compact-focus-ring-svg {
   position: absolute;
   inset: 0;
@@ -4065,54 +4638,300 @@ body[data-icon-mode="tinted"] .widget-compact-summary { --summary-accent: var(--
   height: 100%;
   transform: rotate(-90deg);
 }
-.compact-ring-track { stroke: rgba(255,255,255,.2); }
-.compact-ring-value { stroke: currentColor; }
-.compact-focus-ring[data-phase="break"] { color: #89ecc3; }
-body[data-icon-mode="tinted"] .compact-focus-ring { color: var(--summary-accent); }
-.compact-focus-ring-pct { font-size: 9px; font-weight: 750; font-variant-numeric: tabular-nums; }
+
+.compact-ring-track {
+  stroke: var(--summary-divider);
+}
+
+.compact-ring-value {
+  stroke: currentColor;
+  stroke-linecap: round;
+}
+
+.compact-focus-ring[data-phase="break"] {
+  color: #109868;
+  background: rgba(16, 152, 104, 0.14);
+}
+
+body[data-icon-mode="tinted"] .compact-focus-ring {
+  color: var(--summary-accent);
+  background: var(--summary-accent-soft);
+}
+
+.compact-focus-ring-pct {
+  font-size: 9.5px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+  color: var(--summary-ink);
+}
+
+/* 3. Monthly Calendar Paper Surface (.compact-layout-calendar / .compact-cal-tile) */
+.compact-layout-calendar .widget-compact-top {
+  display: none;
+}
+
+.compact-cal-body {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1 1 auto;
+}
 
 .compact-cal-tile {
-  display: grid;
-  place-content: center;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
   flex: 0 0 auto;
-  width: 31px;
-  height: 31px;
-  text-align: center;
-  color: var(--summary-accent);
-  background: rgba(255,255,255,.10);
-  border-radius: 7px;
+  width: auto;
+  height: auto;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   line-height: 1;
+  gap: 1px;
 }
-.compact-cal-tile-month { font-size: 8px; }
-.compact-cal-tile-day { font-size: 16px; font-weight: 800; }
-.compact-world-rows { display: grid; gap: 2px; min-width: 0; }
-.compact-world-row[hidden] { display: none; }
-.compact-world-row { font-size: 11px; line-height: 1.15; }
-.compact-world-city { color: rgba(255,255,255,.82); }
-.compact-world-time { color: var(--summary-accent); font-variant-numeric: tabular-nums; font-weight: 750; }
 
-.compact-todo-track { height: 3px; border-radius: 3px; background: rgba(255,255,255,.2); overflow: hidden; }
-.compact-todo-fill { height: 100%; border-radius: inherit; background: var(--summary-accent); }
+.compact-cal-tile-month {
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--summary-accent);
+}
+
+.compact-cal-tile-day {
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  line-height: 0.96;
+  color: var(--summary-ink);
+}
+
+.compact-cal-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  text-align: right;
+  gap: 1px;
+}
+
+.compact-cal-weekday {
+  font-size: 13px;
+  font-weight: 720;
+  color: var(--summary-accent);
+}
+
+.compact-cal-sub {
+  font-size: 10px;
+  color: var(--summary-muted);
+}
+
+/* 4. World Clock Dual-Column Partition (.compact-layout-world-clock / .compact-world-rows) */
+.compact-layout-world-clock .widget-compact-top {
+  display: none;
+}
+
+.compact-world-rows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.compact-world-row[hidden] {
+  display: none !important;
+}
+
+.compact-world-row {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.compact-world-row + .compact-world-row {
+  padding-inline-start: 8px;
+  border-inline-start: 1px solid var(--summary-divider);
+}
+
+.compact-world-city {
+  width: 100%;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--summary-muted);
+}
+
+.compact-world-time {
+  font-size: 18px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
+  color: var(--summary-ink);
+}
+
+.compact-world-row:first-child .compact-world-time {
+  color: #ffffff;
+}
+
+/* 5. Todo Progress & First Pending Item (.compact-layout-todo / .compact-todo-track) */
+.compact-layout-todo .widget-compact-kicker {
+  color: var(--summary-accent);
+  font-weight: 700;
+}
+
+.compact-layout-todo .widget-compact-primary {
+  font-size: 17px;
+  font-weight: 780;
+  letter-spacing: -0.025em;
+  line-height: 1.06;
+  color: var(--summary-ink);
+}
+
+.compact-todo-track {
+  height: 3px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--summary-divider);
+  overflow: hidden;
+}
+
+.compact-todo-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--summary-accent);
+  transition: width 0.25s ease;
+}
+
+.compact-layout-todo .widget-compact-secondary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--summary-ink);
+  font-weight: 560;
+}
+
+.compact-layout-todo .widget-compact-secondary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--summary-accent);
+  background: transparent;
+}
+
+/* 6. Quick Note Whole Paper Surface (.compact-layout-quick-note / .compact-note-paper) */
+.compact-layout-quick-note .widget-compact-kicker {
+  font-size: 9.5px;
+  color: var(--summary-muted);
+}
+
 .compact-note-paper {
   min-width: 0;
-  padding: 2px 5px;
-  border-radius: 4px;
-  background: rgba(255,255,255,.075);
-  border-inline-start: 2px solid var(--summary-accent);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 3px;
+  flex: 1 1 auto;
 }
-.compact-note-line1 { border-bottom: 1px solid rgba(255,255,255,.13); }
-.compact-note-line2 { color: var(--summary-accent); }
+
+.compact-note-line1 {
+  width: 100%;
+  font-size: 14px;
+  font-weight: 720;
+  line-height: 1.15;
+  color: var(--summary-ink);
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--summary-divider);
+}
+
+.compact-note-line2 {
+  width: 100%;
+  font-size: 10.5px;
+  line-height: 1.15;
+  color: var(--summary-muted);
+}
+
 @media (max-width: 720px) {
-  body.is-compact-mode .widget-compact-summary { --summary-icon-size: 13px; }
-  body.is-compact-mode .widget-compact-kicker-wrap,
-  body.is-compact-mode .compact-cw-meta { gap: 3px; }
-  body.is-compact-mode .compact-focus-ring,
-  body.is-compact-mode .compact-cal-tile { width: 25px; height: 25px; }
-  body.is-compact-mode .compact-focus-ring-pct,
-  body.is-compact-mode .compact-cal-tile-month { font-size: 7px; }
-  body.is-compact-mode .compact-cal-tile-day { font-size: 13px; }
-  body.is-compact-mode .compact-world-row { font-size: 9px; }
-  body.is-compact-mode .compact-note-paper { padding: 1px 3px; }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .widget-compact-summary {
+    --summary-icon-size: 13px;
+    padding: 6px 8px;
+    gap: 1.5px;
+    border-radius: 16px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .widget-compact-kicker {
+    font-size: 9px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .widget-compact-primary {
+    font-size: 13.5px;
+    line-height: 1.08;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .widget-compact-secondary {
+    font-size: 9.5px;
+    line-height: 1.1;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cw-time {
+    font-size: 18px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cw-temp {
+    font-size: 13px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-layout-focus-timer .compact-focus-meta .widget-compact-primary {
+    font-size: 18px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-focus-ring {
+    width: 30px;
+    height: 30px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-focus-ring-pct {
+    font-size: 8px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cal-tile-day {
+    font-size: 24px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-world-rows {
+    gap: 5px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-world-row + .compact-world-row {
+    padding-inline-start: 5px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-world-time {
+    font-size: 14.5px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-world-city {
+    font-size: 9px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-layout-todo .widget-compact-primary {
+    font-size: 14px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-note-line1 {
+    font-size: 12px;
+    padding-bottom: 2px;
+  }
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-note-line2 {
+    font-size: 9.5px;
+  }
 }
 
 /* Widget Detail Modal Stage (Shows Full Interactive Widget Inner, Hides Summary) */
@@ -4401,6 +5220,10 @@ body[data-icon-mode="tinted"] .compact-focus-ring { color: var(--summary-accent)
   }
 
   /* Override legacy <=720px full-row widget span so mobile compact (6-col) & comfort (4-col) both span 2 columns */
+  .apps-grid.desktop-mixed-grid {
+    --grid-max-track-width: 96px;
+  }
+
   .apps-grid.desktop-mixed-grid .ios-widget,
   .apps-grid.desktop-mixed-grid .ios-widget-placeholder {
     grid-column: span 2;
@@ -4425,25 +5248,25 @@ body[data-icon-mode="tinted"] .compact-focus-ring { color: var(--summary-accent)
     max-width: 56px;
   }
 
-  body.is-compact-mode .widget-compact-summary {
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .widget-compact-summary {
     padding: 4px 7px;
     border-radius: 13px;
     gap: 1px;
   }
 
-  body.is-compact-mode .widget-compact-kicker {
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .widget-compact-kicker {
     font-size: 8.5px;
   }
 
-  body.is-compact-mode .widget-compact-badge {
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .widget-compact-badge {
     display: none;
   }
 
-  body.is-compact-mode .widget-compact-primary {
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .widget-compact-primary {
     font-size: 11.5px;
   }
 
-  body.is-compact-mode .widget-compact-secondary {
+  :where(body.is-compact-mode) .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .widget-compact-secondary {
     font-size: 8.5px;
   }
 
@@ -4866,10 +5689,22 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-label {
   .apps-grid.desktop-mixed-grid .app-item {
     gap: 2px;
   }
+}
+
+.apps-grid.desktop-mixed-grid > .ios-widget:not(.widget-in-detail-modal) {
+  container: widget-summary / size;
+}
+
+@container widget-summary (max-height: 68px) {
   .widget-compact-summary {
-    --summary-icon-size: 13px;
-    padding: 3px 8px;
+    --summary-icon-size: 12px;
+    padding: 4px 8px;
     gap: 1px;
+    border-radius: 17px;
+  }
+  .widget-quick-note .widget-compact-summary,
+  .compact-layout-quick-note {
+    padding-top: 6px;
   }
   .widget-compact-top,
   .widget-compact-primary,
@@ -4877,43 +5712,201 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-label {
     flex-shrink: 0;
   }
   .widget-compact-top {
-    line-height: 1.05;
+    line-height: 1.04;
+  }
+  .widget-compact-kicker {
+    font-size: 8.8px;
   }
   .widget-compact-primary {
-    font-size: 12.5px;
-    line-height: 1.15;
+    font-size: 13px;
+    line-height: 1.05;
   }
   .widget-compact-secondary {
-    font-size: 9.5px;
-    line-height: 1.15;
+    font-size: 9px;
+    line-height: 1.06;
   }
-  .compact-focus-row,
-  .compact-cal-row {
-    gap: 6px;
+  .compact-cw-time {
+    font-size: 18px;
   }
-  .compact-focus-ring,
-  .compact-cal-tile {
-    width: 25px;
-    height: 25px;
+  .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 14px;
+    height: 14px;
+  }
+  .compact-cw-temp {
+    font-size: 12.5px;
+  }
+  .compact-layout-focus-timer .compact-focus-meta .widget-compact-primary,
+  .compact-focus-time {
+    font-size: 18px;
+    line-height: 1.02;
+  }
+  .compact-layout-focus-timer .compact-focus-meta .widget-compact-secondary,
+  .compact-focus-state {
+    font-size: 8.5px;
+    line-height: 1.04;
+  }
+  .compact-focus-body,
+  .compact-cal-body {
+    gap: 5px;
+  }
+  .compact-focus-ring {
+    width: 28px;
+    height: 28px;
+  }
+  .compact-focus-ring-pct {
+    font-size: 7.5px;
+  }
+  .compact-cal-tile-month {
+    font-size: 8px;
   }
   .compact-cal-tile-day {
-    font-size: 12px;
+    font-size: 23px;
+  }
+  .compact-cal-weekday {
+    font-size: 11px;
+  }
+  .compact-cal-sub {
+    font-size: 8.5px;
+  }
+  .compact-world-rows {
+    gap: 5px;
+  }
+  .compact-world-row + .compact-world-row {
+    padding-inline-start: 5px;
+  }
+  .compact-world-time {
+    font-size: 14.5px;
+  }
+  .compact-world-city {
+    font-size: 8.5px;
+  }
+  .compact-layout-todo .widget-compact-primary {
+    font-size: 13px;
+    line-height: 1.04;
+  }
+  .compact-todo-track {
+    height: 2.5px;
+  }
+  .compact-layout-todo .widget-compact-secondary {
+    font-size: 8.8px;
+    line-height: 1.04;
+    gap: 3.5px;
+  }
+  .compact-layout-todo .widget-compact-secondary::before {
+    width: 6px;
+    height: 6px;
   }
   .compact-note-paper {
-    padding: 1px 6px;
-    gap: 1px;
+    gap: 1.5px;
   }
-  .compact-note-paper .widget-compact-primary {
-    font-size: 11px;
-    line-height: 1.1;
+  .compact-note-paper .widget-compact-primary,
+  .compact-note-line1 {
+    font-size: 11.5px;
+    line-height: 1.06;
+    padding-bottom: 1.5px;
   }
-  .compact-note-paper .widget-compact-secondary {
-    font-size: 9px;
-    line-height: 1.1;
+  .compact-note-paper .widget-compact-secondary,
+  .compact-note-line2 {
+    font-size: 8.8px;
+    line-height: 1.06;
   }
 }
 
-/* 14.2 Responsive Widget Sizes: compact (2x1), square (2x2), wide (4x2) */
+@container widget-summary (max-height: 58px) {
+  .widget-compact-summary {
+    padding: 3px 7px;
+    gap: 0.5px;
+    border-radius: 15px;
+  }
+  .widget-quick-note .widget-compact-summary,
+  .compact-layout-quick-note {
+    padding-top: 5px;
+  }
+  .compact-layout-todo .widget-compact-top,
+  .compact-layout-quick-note .widget-compact-top {
+    display: none;
+  }
+  .compact-cw-time {
+    font-size: 16px;
+  }
+  .compact-cw-temp {
+    font-size: 11.5px;
+  }
+  .compact-layout-focus-timer .compact-focus-meta .widget-compact-primary,
+  .compact-focus-time {
+    font-size: 16px;
+  }
+  .compact-focus-ring {
+    width: 24px;
+    height: 24px;
+  }
+  .compact-cal-tile-day {
+    font-size: 20px;
+  }
+  .compact-world-time {
+    font-size: 13px;
+  }
+  .compact-layout-todo .widget-compact-primary {
+    font-size: 12px;
+  }
+  .compact-note-line1 {
+    font-size: 11px;
+    padding-bottom: 1px;
+  }
+}
+
+@container widget-summary (max-width: 135px) {
+  .widget-compact-summary {
+    padding-inline: 7px;
+  }
+  .compact-cw-time {
+    font-size: 16.5px;
+  }
+  .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 13px;
+    height: 13px;
+  }
+  .compact-cw-temp {
+    font-size: 11.5px;
+  }
+  .compact-layout-focus-timer .compact-focus-meta .widget-compact-primary,
+  .compact-focus-time {
+    font-size: 16.5px;
+  }
+  .compact-focus-ring {
+    width: 26px;
+    height: 26px;
+  }
+  .compact-cal-tile-day {
+    font-size: 21px;
+  }
+  .compact-cal-weekday {
+    font-size: 10.5px;
+  }
+  .compact-cal-sub {
+    display: none;
+  }
+  .compact-world-rows {
+    gap: 4px;
+  }
+  .compact-world-row + .compact-world-row {
+    padding-inline-start: 4px;
+  }
+  .compact-world-time {
+    font-size: 12.5px;
+  }
+  .compact-world-city {
+    font-size: 8.5px;
+  }
+  .compact-layout-todo .widget-compact-primary {
+    font-size: 12.5px;
+  }
+  .compact-note-line1 {
+    font-size: 11px;
+  }
+}
+
+/* 14.2 Responsive Widget Sizes: compact (2x1), square (2x2), landscape (3x2), wide (4x2) */
 .apps-grid.desktop-mixed-grid .ios-widget:not(.widget-in-detail-modal),
 .apps-grid.desktop-mixed-grid .ios-widget-placeholder,
 .apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="compact"]:not(.widget-in-detail-modal),
@@ -4929,6 +5922,22 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-label {
 .apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="square"] {
   grid-column: span 2;
   grid-row: span 2;
+  width: var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px))) !important;
+  min-width: var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px))) !important;
+  max-width: min(100%, var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px)))) !important;
+  height: var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px))) !important;
+  min-height: var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px))) !important;
+  max-height: var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px))) !important;
+  aspect-ratio: 1 / 1;
+  justify-self: center;
+  align-self: center;
+}
+
+.apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="landscape"] {
+  grid-column: span 3;
+  grid-row: span 2;
+  width: 100%;
   height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
   min-height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
   max-height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
@@ -4941,6 +5950,110 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-label {
   height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
   min-height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
   max-height: calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px));
+}
+
+/* 14.2b Daily & full widget geometries: single (1x1), tall (2x3), large (3x3), full (4x4), strip (4x1).
+   1x1, 3x3 and 4x4 paint a true square = min(N tracks + gaps, N rows + gaps), centered in their cell. */
+.apps-grid.desktop-mixed-grid {
+  --widget-single-size: min(var(--grid-track-width, 96px), var(--grid-row-height, 84px));
+  --widget-large-size: min(
+    calc(var(--grid-track-width, 96px) * 3 + var(--grid-col-gap, 12px) * 2),
+    calc(var(--grid-row-height, 84px) * 3 + var(--grid-row-gap, 10px) * 2)
+  );
+  --widget-full-size: min(
+    calc(var(--grid-track-width, 96px) * 4 + var(--grid-col-gap, 12px) * 3),
+    calc(var(--grid-row-height, 84px) * 4 + var(--grid-row-gap, 10px) * 3)
+  );
+}
+
+.apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="single"]:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="single"] {
+  grid-column: span 1;
+  grid-row: span 1;
+  width: var(--widget-single-size) !important;
+  min-width: var(--widget-single-size) !important;
+  max-width: min(100%, var(--widget-single-size)) !important;
+  height: var(--widget-single-size) !important;
+  min-height: var(--widget-single-size) !important;
+  max-height: var(--widget-single-size) !important;
+  aspect-ratio: 1 / 1;
+  justify-self: center;
+  align-self: center;
+}
+
+.apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="large"]:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="large"] {
+  grid-column: span 3;
+  grid-row: span 3;
+  width: var(--widget-large-size) !important;
+  min-width: var(--widget-large-size) !important;
+  max-width: min(100%, var(--widget-large-size)) !important;
+  height: var(--widget-large-size) !important;
+  min-height: var(--widget-large-size) !important;
+  max-height: var(--widget-large-size) !important;
+  aspect-ratio: 1 / 1;
+  justify-self: center;
+  align-self: center;
+}
+
+.apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="full"]:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="full"] {
+  grid-column: span 4;
+  grid-row: span 4;
+  width: var(--widget-full-size) !important;
+  min-width: var(--widget-full-size) !important;
+  max-width: min(100%, var(--widget-full-size)) !important;
+  height: var(--widget-full-size) !important;
+  min-height: var(--widget-full-size) !important;
+  max-height: var(--widget-full-size) !important;
+  aspect-ratio: 1 / 1;
+  justify-self: center;
+  align-self: center;
+}
+
+.apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="tall"]:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="tall"] {
+  grid-column: span 2;
+  grid-row: span 3;
+  width: 100%;
+  height: calc(var(--grid-row-height, 84px) * 3 + var(--grid-row-gap, 10px) * 2);
+  min-height: calc(var(--grid-row-height, 84px) * 3 + var(--grid-row-gap, 10px) * 2);
+  max-height: calc(var(--grid-row-height, 84px) * 3 + var(--grid-row-gap, 10px) * 2);
+}
+
+.apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="strip"]:not(.widget-in-detail-modal),
+.apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="strip"] {
+  grid-column: span 4;
+  grid-row: span 1;
+  width: 100%;
+  height: var(--grid-row-height, 84px);
+  min-height: var(--grid-row-height, 84px);
+  max-height: var(--grid-row-height, 84px);
+}
+
+/* Narrow grids: spans never exceed available tracks (display-mode.js already falls back first) */
+@container (max-width: 300px) {
+  .apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="strip"]:not(.widget-in-detail-modal),
+  .apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="strip"],
+  .apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal),
+  .apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="landscape"],
+  .apps-grid.desktop-mixed-grid .ios-widget[data-widget-size="full"]:not(.widget-in-detail-modal),
+  .apps-grid.desktop-mixed-grid .ios-widget-placeholder[data-widget-size="full"] {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Larger daily & full cards keep their summary-extra visible like square/landscape/wide */
+.ios-widget[data-widget-size="tall"]:not(.widget-in-detail-modal) .widget-summary-extra,
+.ios-widget[data-widget-size="large"]:not(.widget-in-detail-modal) .widget-summary-extra,
+.ios-widget[data-widget-size="full"]:not(.widget-in-detail-modal) .widget-summary-extra {
+  display: flex !important;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-height: 22px;
+  margin-top: 4px;
+  overflow: hidden;
 }
 
 /* Detail Modal Priority Overrides */
@@ -4961,16 +6074,32 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-label {
 }
 
 .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-summary-extra,
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .widget-summary-extra,
 .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-summary-extra {
   display: flex !important;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   flex: 1 1 auto;
   min-height: 22px;
-  margin-top: 2px;
-  padding-top: 3px;
-  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  margin-top: 4px;
+  padding-top: 5px;
+  border-top: 1px solid var(--summary-divider);
   overflow: hidden;
+  color: var(--summary-ink);
+  font-size: 10px;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-extra-clock-weather,
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .summary-extra-clock-weather,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-extra-clock-weather,
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-extra-calendar,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-extra-calendar,
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-extra-focus-timer,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-extra-focus-timer {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 8px;
+  gap: 5px;
 }
 
 .widget-in-detail-modal .widget-summary-extra {
@@ -4978,58 +6107,156 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-label {
 }
 
 .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-summary,
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .widget-compact-summary,
 .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-summary {
   justify-content: flex-start;
-  gap: 2px;
-  padding: 6px 10px;
+  gap: 4px;
+  padding: 13px 15px;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-layout-clock-weather,
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .compact-layout-clock-weather,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-layout-clock-weather,
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-layout-calendar,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-layout-calendar {
+  padding: 15px 16px;
+  gap: 5px;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-quick-note .widget-compact-summary,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-quick-note .widget-compact-summary,
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-layout-quick-note,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-layout-quick-note {
+  padding-top: 13px;
 }
 
 .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-top,
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .widget-compact-top,
 .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-top,
 .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-primary,
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .widget-compact-primary,
 .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-primary,
 .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-secondary,
-.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-secondary {
-  flex-shrink: 0;
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .widget-compact-secondary,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-secondary,
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-focus-body,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-focus-body,
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-body,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cal-body {
+  flex: 0 0 auto;
 }
 
-.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-primary {
-  font-size: 14px;
-  line-height: 1.1;
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-time {
+  font-size: 31px;
 }
 
-.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-primary {
-  font-size: 15px;
-  line-height: 1.1;
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .compact-cw-time {
+  font-size: 36px;
+  letter-spacing: -0.04em;
 }
 
-/* On tight 2-row heights (e.g. ~116px in compact / short viewport), compact header & primary rows so .widget-summary-extra always has room for at least 1 visible/scrollable row */
-@media (max-height: 760px), (max-width: 768px) {
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cw-time {
+  font-size: 42px;
+  letter-spacing: -0.04em;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-readout .widget-compact-icon.is-weather {
+  width: 24px;
+  height: 24px;
+}
+
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .compact-cw-readout .widget-compact-icon.is-weather {
+  width: 28px;
+  height: 28px;
+}
+
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cw-readout .widget-compact-icon.is-weather {
+  width: 32px;
+  height: 32px;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-temp {
+  font-size: 20px;
+}
+
+.ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .compact-cw-temp {
+  font-size: 23px;
+}
+
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cw-temp {
+  font-size: 26px;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-tile-day {
+  font-size: 34px;
+}
+
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cal-tile-day {
+  font-size: 42px;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-layout-focus-timer .compact-focus-meta .widget-compact-primary,
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-focus-time {
+  font-size: 28px;
+}
+
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-layout-focus-timer .compact-focus-meta .widget-compact-primary,
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-focus-time {
+  font-size: 32px;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-focus-ring {
+  width: 44px;
+  height: 44px;
+}
+
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-focus-ring {
+  width: 50px;
+  height: 50px;
+}
+
+.ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-layout-todo .widget-compact-primary {
+  font-size: 19px;
+}
+
+.ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-layout-todo .widget-compact-primary {
+  font-size: 22px;
+}
+
+/* On tight 2-row container heights (<=154px), compact header & primary rows so .widget-summary-extra always has room */
+@container widget-summary (max-height: 154px) {
   .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-summary,
+  .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .widget-compact-summary,
   .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-summary {
-    padding: 5px 8px;
-    gap: 1px;
+    padding: 6px 9px;
+    gap: 1.5px;
   }
-  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-primary,
-  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-primary {
-    font-size: 12.5px;
-    line-height: 1.08;
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-time {
+    font-size: 22px;
   }
-  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-secondary,
-  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-secondary {
-    font-size: 9.5px;
-    line-height: 1.08;
+  .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .compact-cw-time {
+    font-size: 25px;
   }
-  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-focus-ring,
-  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-tile,
-  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-focus-ring,
-  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cal-tile {
-    width: 24px;
-    height: 24px;
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cw-time {
+    font-size: 28px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-temp,
+  .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .compact-cw-temp,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cw-temp {
+    font-size: 16px;
   }
   .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-tile-day,
   .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cal-tile-day {
-    font-size: 12px;
+    font-size: 24px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-layout-focus-timer .compact-focus-meta .widget-compact-primary,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-layout-focus-timer .compact-focus-meta .widget-compact-primary {
+    font-size: 22px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-focus-ring,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-focus-ring {
+    width: 30px;
+    height: 30px;
   }
   .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-note-paper,
   .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-note-paper,
@@ -5038,31 +6265,59 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-label {
     display: none;
   }
   .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-summary-extra,
+  .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .widget-summary-extra,
   .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-summary-extra {
     margin-top: 1px;
     padding-top: 2px;
     gap: 2px;
   }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-extra-clock-weather,
+  .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .summary-extra-clock-weather,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-extra-clock-weather,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-extra-calendar,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-extra-calendar,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-extra-focus-timer,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-extra-focus-timer {
+    margin-top: auto;
+    padding-top: 3px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cal-day-pill > span:last-child,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-cal-day-pill > span:last-child {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
 }
 
 @media (min-height: 820px) and (min-width: 769px) {
   .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-summary,
+  .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .widget-compact-summary,
   .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-summary {
-    padding: 9px 12px;
-    gap: 4px;
-  }
-  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-primary {
-    font-size: 15.5px;
-  }
-  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-primary {
-    font-size: 16.5px;
+    padding: 14px 16px;
+    gap: 5px;
   }
   .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-summary-extra,
+  .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .widget-summary-extra,
   .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-summary-extra {
-    gap: 4px;
-    margin-top: 3px;
-    padding-top: 4px;
+    gap: 5px;
+    margin-top: 4px;
+    padding-top: 5px;
   }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-extra-clock-weather,
+  .ios-widget[data-widget-size="landscape"]:not(.widget-in-detail-modal) .summary-extra-clock-weather,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-extra-clock-weather,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-extra-calendar,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-extra-calendar,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-extra-focus-timer,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-extra-focus-timer {
+    margin-top: auto;
+    padding-top: 8px;
+  }
+}
+
+body:not(.jiggle-mode) .springboard-viewport .ios-widget [data-widget-horizontal-scroll],
+body:not(.jiggle-mode) .springboard-viewport .ios-widget [data-widget-horizontal-scroll] * {
+  touch-action: pan-x pinch-zoom !important;
 }
 
 .widget-summary-scroll {
@@ -5074,9 +6329,9 @@ body[data-icon-size="large"] .apps-grid.desktop-mixed-grid .app-label {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  scrollbar-color: var(--summary-divider) transparent;
   padding-right: 2px;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .widget-summary-scroll:focus-visible {
@@ -5089,39 +6344,62 @@ body:not(.jiggle-mode) .springboard-viewport .ios-widget .widget-summary-scroll 
   touch-action: pan-y !important;
 }
 
-/* Clock & Weather Extra (.summary-cw-metrics / .summary-cw-chip / .summary-cw-footer) */
+/* Clock & Weather Extra (.summary-cw-range / .summary-cw-metrics / .summary-cw-chip / .summary-cw-footer) */
+.summary-cw-range {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--summary-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .summary-cw-metrics {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
+  flex-wrap: nowrap;
+  gap: 8px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .summary-cw-chip {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 1.5px 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.11);
-  color: var(--summary-accent, #8fd8ff);
-  font-size: 9.5px;
-  font-weight: 600;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--summary-muted);
+  font-size: 10px;
+  font-weight: 560;
   line-height: 1.2;
   white-space: nowrap;
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.summary-cw-chip + .summary-cw-chip::before {
+  content: "·";
+  margin-right: 5px;
+  opacity: 0.6;
+}
+
 .summary-cw-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   font-size: 9.5px;
   line-height: 1.2;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--summary-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.summary-cw-greeting {
+  display: none !important;
 }
 
 /* Focus Timer Extra (.summary-focus-status-row / .summary-focus-bar-track / .summary-focus-bar-fill) */
@@ -5130,9 +6408,19 @@ body:not(.jiggle-mode) .springboard-viewport .ios-widget .widget-summary-scroll 
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  font-size: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
   line-height: 1.2;
-  color: rgba(255, 255, 255, 0.84);
+  color: var(--summary-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-focus-elapsed,
+.summary-focus-preset-meta {
+  font-size: 9.5px;
+  color: var(--summary-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5143,18 +6431,26 @@ body:not(.jiggle-mode) .springboard-viewport .ios-widget .widget-summary-scroll 
   height: 4px;
   flex-shrink: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--summary-divider);
   overflow: hidden;
 }
 
 .summary-focus-bar-fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--summary-accent, #d6b0ff), #5e5ce6);
+  background: var(--summary-accent);
   transition: width 0.3s ease;
 }
 
 /* Monthly Calendar 7-Column Week Strip (.summary-cal-week-strip / .summary-cal-day-pill) */
+.summary-cal-week-meta {
+  font-size: 9.5px;
+  color: var(--summary-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .summary-cal-week-strip {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -5169,12 +6465,12 @@ body:not(.jiggle-mode) .springboard-viewport .ios-widget .widget-summary-scroll 
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
   padding: 2px 1px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 9px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--summary-ink);
+  font-size: 9.5px;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
   min-width: 0;
@@ -5189,92 +6485,788 @@ body:not(.jiggle-mode) .springboard-viewport .ios-widget .widget-summary-scroll 
 }
 
 .summary-cal-day-pill > span:first-child {
-  font-size: 8px;
-  color: rgba(255, 255, 255, 0.62);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--summary-muted);
 }
 
 .summary-cal-day-pill > span:last-child {
-  font-size: 10px;
+  display: inline-grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  font-size: 12px;
   font-weight: 700;
+  color: var(--summary-ink);
 }
 
 .summary-cal-day-pill.is-outside {
-  opacity: 0.42;
+  opacity: 0.38;
 }
 
-.summary-cal-day-pill.is-today {
-  background: var(--summary-accent, #ff375f);
-  color: #0b0d17;
-  font-weight: 700;
-  box-shadow: 0 2px 6px rgba(255, 55, 95, 0.35);
+.summary-cal-day-pill.is-today > span:first-child {
+  color: var(--summary-accent);
+  font-weight: 750;
 }
 
-.summary-cal-day-pill.is-today > span {
-  color: #0b0d17;
+.summary-cal-day-pill.is-today > span:last-child {
+  background: var(--summary-accent);
+  color: #ffffff;
   font-weight: 800;
 }
 
+/* Narrow & Tiny Square/Wide/Compact Container Adaptations (e.g. 320/375 6-col compact & short split windows) */
+@container widget-summary (max-width: 240px) {
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .widget-compact-summary {
+    padding: 7px 9px;
+    border-radius: 15px;
+  }
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cw-time {
+    font-size: 22px;
+  }
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cw-temp {
+    font-size: 14px;
+  }
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 16px;
+    height: 16px;
+  }
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cal-tile-day {
+    font-size: 22px;
+  }
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-cal-day-pill > span:last-child {
+    width: 16px;
+    height: 16px;
+    font-size: 9.5px;
+  }
+}
+
+@container widget-summary (max-width: 138px) {
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-summary {
+    padding: 6px 7px;
+    gap: 1.5px;
+    border-radius: 15px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-time {
+    font-size: 18px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-temp {
+    font-size: 12.5px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 14px;
+    height: 14px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-tile-day {
+    font-size: 20px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-sub,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cal-week-meta,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cw-footer {
+    display: none;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cal-week-strip {
+    gap: 1px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cal-day-pill {
+    padding: 1px 0;
+    gap: 1px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cal-day-pill > span:first-child {
+    font-size: 7.5px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cal-day-pill > span:last-child {
+    width: 13px;
+    height: 13px;
+    font-size: 8.5px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-layout-focus-timer .compact-focus-meta .widget-compact-primary,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-focus-time {
+    font-size: 17px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-focus-ring {
+    width: 26px;
+    height: 26px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-layout-todo .widget-compact-primary {
+    font-size: 13px;
+  }
+}
+
+@container widget-summary (max-width: 108px) {
+  .ios-widget:not(.widget-in-detail-modal) .widget-compact-summary,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .widget-compact-summary {
+    padding: 4px 5px;
+    border-radius: 13px;
+  }
+  .ios-widget:not(.widget-in-detail-modal) .compact-cw-time,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-time {
+    font-size: 15px;
+  }
+  .ios-widget:not(.widget-in-detail-modal) .compact-cw-temp,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-temp {
+    font-size: 11px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-tile-day {
+    font-size: 17px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cal-day-pill > span:first-child {
+    font-size: 7px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cal-day-pill > span:last-child {
+    width: 11px;
+    height: 11px;
+    font-size: 7.5px;
+  }
+}
+
+@container widget-summary (max-height: 122px) {
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cw-footer,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-cw-footer,
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .summary-cal-week-meta,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .summary-cal-week-meta {
+    display: none;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cw-time {
+    font-size: 17px;
+  }
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cw-time {
+    font-size: 21px;
+  }
+  .ios-widget[data-widget-size="square"]:not(.widget-in-detail-modal) .compact-cal-tile-day,
+  .ios-widget[data-widget-size="wide"]:not(.widget-in-detail-modal) .compact-cal-tile-day {
+    font-size: 18px;
+  }
+}
+
+/* 14.4 Weather: obvious current-condition glyph + upcoming hourly forecast (summary & detail) */
+.cw-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.compact-cw-readout {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.compact-cw-readout .widget-compact-icon svg,
+.cw-hour-icon svg,
+.weather-hero-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cw-readout .widget-compact-icon.is-weather {
+  width: 20px;
+  height: 20px;
+}
+
+/* Condition tint: day sun warm, night moon cool, rain/snow blue, unknown muted (never a fake sun) */
+.compact-cw-readout .widget-compact-icon[data-weather-kind],
+.cw-hour-icon[data-weather-kind],
+.weather-hero-icon[data-weather-kind] {
+  color: var(--summary-ink, #ffffff);
+}
+.compact-cw-readout .widget-compact-icon[data-weather-kind="clear-day"],
+.cw-hour-icon[data-weather-kind="clear-day"],
+.weather-hero-icon[data-weather-kind="clear-day"],
+.compact-cw-readout .widget-compact-icon[data-weather-kind="partly-cloudy-day"],
+.cw-hour-icon[data-weather-kind="partly-cloudy-day"],
+.weather-hero-icon[data-weather-kind="partly-cloudy-day"],
+.compact-cw-readout .widget-compact-icon[data-weather-kind="storm"],
+.cw-hour-icon[data-weather-kind="storm"],
+.weather-hero-icon[data-weather-kind="storm"] {
+  color: #ffd25e;
+}
+.compact-cw-readout .widget-compact-icon[data-weather-kind="clear-night"],
+.cw-hour-icon[data-weather-kind="clear-night"],
+.weather-hero-icon[data-weather-kind="clear-night"] {
+  color: #d6dcff;
+}
+.compact-cw-readout .widget-compact-icon[data-weather-kind="rain"],
+.cw-hour-icon[data-weather-kind="rain"],
+.weather-hero-icon[data-weather-kind="rain"],
+.compact-cw-readout .widget-compact-icon[data-weather-kind="snow"],
+.cw-hour-icon[data-weather-kind="snow"],
+.weather-hero-icon[data-weather-kind="snow"] {
+  color: #8fdcff;
+}
+.compact-cw-readout .widget-compact-icon[data-weather-kind="unknown"],
+.cw-hour-icon[data-weather-kind="unknown"],
+.weather-hero-icon[data-weather-kind="unknown"] {
+  color: var(--summary-muted, rgba(255, 255, 255, 0.55));
+}
+
+.compact-layout-clock-weather[data-weather-state="loading"] .compact-cw-readout,
+.compact-layout-clock-weather[data-weather-state="unavailable"] .compact-cw-readout {
+  opacity: 0.66;
+}
+
+/* With a forecast present, hourly row leads; secondary metric chips and date step back */
+.compact-layout-clock-weather[data-has-hourly="true"] .summary-cw-metrics,
+.compact-layout-clock-weather[data-has-hourly="true"] .summary-cw-zone {
+  display: none !important;
+}
+
+.summary-cw-footer > .summary-cw-range {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.summary-cw-hourly {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+}
+
+.summary-cw-hourly[hidden],
+.weather-hourly-detail[hidden] {
+  display: none !important;
+}
+
+.cw-hour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.cw-hour-time {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--summary-muted, rgba(255, 255, 255, 0.66));
+  white-space: nowrap;
+}
+
+.cw-hour-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.cw-hour-temp {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--summary-ink, #ffffff);
+  white-space: nowrap;
+}
+
+.cw-hour-pop {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #8fdcff;
+}
+
+.ios-widget[data-widget-size="square"] .summary-cw-hourly > .cw-hour:nth-child(n + 4) {
+  display: none;
+}
+
+@container widget-summary (max-height: 154px) {
+  .summary-cw-hourly {
+    gap: 1px;
+  }
+  .cw-hour {
+    gap: 1px;
+  }
+  .cw-hour-time {
+    font-size: 8.5px;
+  }
+  .cw-hour-icon {
+    width: 14px;
+    height: 14px;
+  }
+  .cw-hour-temp {
+    font-size: 10px;
+  }
+}
+
+@container widget-summary (max-width: 210px) {
+  .ios-widget[data-widget-size="wide"] .summary-cw-hourly > .cw-hour:nth-child(n + 5) {
+    display: none;
+  }
+}
+
+@container widget-summary (max-height: 104px) {
+  .ios-widget[data-widget-size="square"] .compact-layout-clock-weather[data-has-hourly="true"] .summary-cw-footer {
+    display: none !important;
+  }
+}
+@container widget-summary (max-height: 84px) {
+  .ios-widget[data-widget-size="square"] .summary-cw-hourly {
+    display: none !important;
+  }
+}
+
+/* 2x1: current glyph + temperature lead; time shrinks first on narrow cells */
+@container widget-summary (max-width: 135px) {
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cw-time {
+    font-size: 15px;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 16px;
+    height: 16px;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cw-temp {
+    font-size: 13px;
+  }
+}
+
+@container widget-summary (max-width: 108px) {
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cw-time {
+    font-size: 13px;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 15px;
+    height: 15px;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]) .compact-cw-temp {
+    font-size: 11.5px;
+  }
+}
+
+/* Smallest 2x1 (e.g. 320px compact ≈ 96×48): time + glyph/temp can't share one line without
+   clipping ("-18°C"), so stack time over the readout and drop the secondary city/condition line.
+   World clock: two stacked "city … HH:mm" rows with tight line-height instead of side-by-side columns. */
+@container widget-summary (max-width: 128px) {
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-clock-weather {
+    justify-content: center;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-clock-weather .compact-cw-row {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-clock-weather .compact-cw-time {
+    font-size: 17px;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-clock-weather .compact-cw-readout {
+    gap: 3px;
+    line-height: 1.05;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-clock-weather .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 14px;
+    height: 14px;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-clock-weather .compact-cw-temp {
+    font-size: 12.5px;
+    letter-spacing: -0.02em;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-clock-weather .compact-cw-meta {
+    display: none;
+  }
+
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-world-clock .compact-world-rows {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    gap: 1px;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-world-clock .compact-world-row {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-world-clock .compact-world-row + .compact-world-row {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+    padding-top: 1px;
+    border-top: 1px solid var(--summary-divider);
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-world-clock .compact-world-city {
+    width: auto;
+    flex: 1 1 auto;
+    font-size: 9px;
+    line-height: 1.15;
+  }
+  .ios-widget:not([data-widget-size="square"]):not([data-widget-size="wide"]):not(.widget-in-detail-modal) .compact-layout-world-clock .compact-world-time {
+    font-size: 13px;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Detail view: hero glyph beside temperature, scrollable hourly strip */
+.weather-now-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.weather-hero-icon {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+}
+
+.weather-hourly-detail {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  padding: 4px 1px 6px;
+  touch-action: pan-x pan-y;
+}
+
+.weather-hourly-detail .cw-hour {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 7px 5px;
+  gap: 4px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  scroll-snap-align: start;
+}
+
+.weather-hourly-detail .cw-hour-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.weather-hourly-detail .cw-hour-time {
+  font-size: 10.5px;
+}
+
+.weather-hourly-detail .cw-hour-temp {
+  font-size: 13px;
+}
+
+/* Desktop: align status-left first content edge with the real grid's left edge (set by app.js) */
+@media (min-width: 769px) {
+  .status-left {
+    padding-inline-start: var(--status-left-inset, 0px);
+  }
+  .status-right {
+    padding-inline-end: var(--status-right-inset, 0px);
+  }
+}
+
+/* Settings: 5 tabs fit on wide modals, scroll horizontally on narrow screens */
+#apiConfigModal .settings-tabs-nav.settings-tabs-nav-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+#apiConfigModal .settings-tabs-nav.settings-tabs-nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+#apiConfigModal .settings-tabs-nav.settings-tabs-nav-scroll .settings-tab-btn {
+  flex: 1 0 auto;
+  min-width: max-content;
+  white-space: nowrap;
+  scroll-snap-align: start;
+  padding-inline: 10px;
+}
+
+@media (max-width: 480px) {
+  #apiConfigModal .settings-tabs-nav.settings-tabs-nav-scroll .settings-tab-btn {
+    flex: 0 0 auto;
+    font-size: 12px;
+    padding-inline: 9px;
+  }
+}
+
+.notification-api-hint {
+  margin-top: 4px;
+}
+
+/* 更新与组件 tab (local-only import & upgrade inspection) */
+.update-file-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.update-file-input {
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.update-file-label {
+  cursor: pointer;
+}
+
+.update-sha-input,
+.update-manage-url {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  outline: none;
+}
+
+.update-manage-url {
+  user-select: all !important;
+  -webkit-user-select: all !important;
+}
+
+.update-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-start;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-width: 0;
+}
+
+.update-preview[hidden] {
+  display: none !important;
+}
+
+.update-preview-list {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 0;
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.update-preview-list dt {
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+}
+
+.update-preview-list dd {
+  margin: 0;
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.update-card-swatch {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 96px;
+  border-radius: 20px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #ffffff;
+  background: #3a4252;
+  overflow: hidden;
+}
+
+.update-card-swatch[data-palette="indigo"] { background: #4b4fc4; }
+.update-card-swatch[data-palette="teal"] { background: #127a7a; }
+.update-card-swatch[data-palette="amber"] { background: #b8730f; }
+.update-card-swatch[data-palette="slate"] { background: #3a4252; }
+.update-card-swatch[data-palette="rose"] { background: #b8385e; }
+
+.update-card-swatch-title {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.update-card-swatch-meta {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.update-status {
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.78);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.update-status[hidden] {
+  display: none !important;
+}
+
+.update-status[data-status-tone="ok"],
+.update-result-line[data-status-tone="ok"] {
+  color: #7ee2a8;
+}
+
+.update-status[data-status-tone="warn"],
+.update-result-line[data-status-tone="warn"] {
+  color: #ffd27a;
+}
+
+.update-status[data-status-tone="error"] {
+  color: #ff8a80;
+}
+
+.update-result-line {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.update-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.update-warning {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffd27a;
+}
+
+.update-steps-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+@media (max-width: 480px) {
+  .update-card-swatch {
+    width: 80px;
+    height: 80px;
+  }
+  .update-preview-list {
+    flex-basis: 100%;
+  }
+}
+
 /* Quick Note Paragraphs (.summary-note-paragraph / .summary-note-index / .summary-note-text) */
+.summary-note-meta,
+.summary-note-empty {
+  font-size: 9.5px;
+  color: var(--summary-muted);
+}
+
 .summary-note-paragraph {
   display: flex;
   align-items: baseline;
-  gap: 5px;
-  padding: 2px 5px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 10px;
-  line-height: 1.3;
-  color: rgba(255, 255, 255, 0.9);
+  gap: 4px;
+  padding: 2.5px 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--summary-divider);
+  font-size: 10.5px;
+  line-height: 1.32;
+  color: var(--summary-ink);
 }
 
-.summary-note-paragraph + .summary-note-paragraph {
-  margin-top: 2px;
+.summary-note-paragraph:last-child {
+  border-bottom: 0;
 }
 
 .summary-note-index {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--summary-accent, #ffe1a2);
+  display: none !important;
 }
 
 .summary-note-text {
   flex: 1;
   min-width: 0;
   word-break: break-word;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--summary-ink);
 }
 
 /* Todo Items (.summary-todo-item / .summary-todo-bullet / .summary-todo-text / .summary-todo-due) */
+.summary-todo-stats,
+.summary-todo-empty {
+  font-size: 9.5px;
+  color: var(--summary-muted);
+}
+
 .summary-todo-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 5px;
-  padding: 2.5px 6px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.07);
-  font-size: 10px;
+  gap: 6px;
+  padding: 3px 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--summary-divider);
+  font-size: 10.5px;
   line-height: 1.25;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--summary-ink);
 }
 
-.summary-todo-item + .summary-todo-item {
-  margin-top: 2px;
+.summary-todo-item:last-child {
+  border-bottom: 0;
+}
+
+.summary-todo-item.is-completed .summary-todo-text {
+  color: var(--summary-muted);
+  text-decoration: line-through;
 }
 
 .summary-todo-bullet {
-  width: 6px;
-  height: 6px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--summary-accent, #89ecc3);
+  border: 1.5px solid var(--summary-accent);
+  background: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 8px;
-  color: var(--summary-accent, #89ecc3);
+  color: transparent;
+}
+
+.summary-todo-bullet.is-done {
+  background: var(--summary-accent);
+  color: #ffffff;
 }
 
 .summary-todo-text {
@@ -5283,63 +7275,73 @@ body:not(.jiggle-mode) .springboard-viewport .ios-widget .widget-summary-scroll 
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--summary-ink);
 }
 
 .summary-todo-due {
   flex-shrink: 0;
   font-size: 9px;
   font-variant-numeric: tabular-nums;
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.75);
+  padding: 0;
+  background: transparent;
+  color: var(--summary-muted);
 }
 
 /* World Clock Items (.summary-world-item / .summary-world-item-left / .summary-world-city / .summary-world-diff / .summary-world-time) */
+.summary-world-meta {
+  font-size: 9.5px;
+  color: var(--summary-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .summary-world-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 2.5px 6px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.07);
-  font-size: 10px;
+  gap: 8px;
+  padding: 3px 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--summary-divider);
+  font-size: 10.5px;
   line-height: 1.2;
 }
 
-.summary-world-item + .summary-world-item {
-  margin-top: 2px;
+.summary-world-item:last-child {
+  border-bottom: 0;
 }
 
 .summary-world-item-left {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
   flex: 1;
 }
 
 .summary-world-city {
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--summary-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .summary-world-diff {
-  font-size: 8.5px;
-  color: rgba(255, 255, 255, 0.62);
+  font-size: 9px;
+  color: var(--summary-muted);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .summary-world-time {
   flex-shrink: 0;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 760;
   font-variant-numeric: tabular-nums;
-  color: var(--summary-accent, #9ebcff);
+  color: var(--summary-ink);
 }
 
 /* 14.4 Edit Mode Widget Size Controls (.card-edit-actions / .widget-card-edit-actions / .widget-size-controls) */
@@ -5531,41 +7533,125 @@ body[data-night-mode="true"] .springboard-pagination {
   border-color: rgba(190, 205, 240, 0.2);
 }
 
-body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-compact-summary,
 body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-inner {
-  background: linear-gradient(155deg, rgba(12, 16, 28, 0.84) 0%, rgba(7, 10, 18, 0.9) 100%);
-  border-color: rgba(190, 208, 245, 0.24);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 12px 28px -8px rgba(0, 0, 0, 0.58);
+  background: linear-gradient(155deg, rgba(12, 16, 28, 0.86) 0%, rgba(7, 10, 18, 0.92) 100%);
+  border-color: var(--summary-border, rgba(190, 208, 245, 0.28));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 12px 28px -8px rgba(0, 0, 0, 0.62);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-clock-weather .widget-inner {
+  background:
+    radial-gradient(120% 90% at 92% 8%, rgba(86, 192, 255, 0.22) 0%, transparent 65%),
+    linear-gradient(150deg, rgba(10, 32, 66, 0.88) 0%, rgba(6, 14, 34, 0.94) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-focus-timer .widget-inner {
+  background:
+    radial-gradient(95% 95% at 88% 50%, rgba(158, 108, 255, 0.24) 0%, transparent 68%),
+    linear-gradient(150deg, rgba(26, 18, 54, 0.88) 0%, rgba(10, 9, 26, 0.94) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-quick-note .widget-inner {
+  background:
+    radial-gradient(110% 85% at 15% 10%, rgba(255, 192, 82, 0.17) 0%, transparent 65%),
+    linear-gradient(150deg, rgba(38, 28, 14, 0.88) 0%, rgba(16, 13, 9, 0.94) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-todo .widget-inner {
+  background:
+    radial-gradient(110% 90% at 90% 12%, rgba(52, 211, 153, 0.19) 0%, transparent 65%),
+    linear-gradient(150deg, rgba(11, 38, 34, 0.88) 0%, rgba(7, 18, 20, 0.94) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-calendar .widget-inner {
+  background:
+    radial-gradient(100% 90% at 14% 50%, rgba(255, 64, 100, 0.2) 0%, transparent 66%),
+    linear-gradient(150deg, rgba(42, 15, 28, 0.88) 0%, rgba(18, 8, 16, 0.94) 100%);
+}
+
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-world-clock .widget-inner {
+  background:
+    radial-gradient(115% 85% at 85% 15%, rgba(88, 142, 255, 0.19) 0%, transparent 65%),
+    linear-gradient(150deg, rgba(14, 26, 48, 0.88) 0%, rgba(8, 12, 24, 0.94) 100%);
+}
+
+/* Distinct Night Mode Card Surfaces (.widget-compact-summary) */
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-compact-summary {
+  box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.56), 0 1px 3px rgba(0, 0, 0, 0.28);
 }
 
 body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-clock-weather .widget-compact-summary,
-body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-clock-weather .widget-inner {
-  background: linear-gradient(150deg, rgba(11, 29, 58, 0.86) 0%, rgba(7, 14, 32, 0.92) 100%);
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .compact-layout-clock-weather {
+  --summary-surface: linear-gradient(160deg, #10264a 0%, #091328 100%);
+  --summary-ink: #f4f8ff;
+  --summary-muted: rgba(202, 224, 250, 0.74);
+  --summary-accent: #73cdff;
+  --summary-accent-soft: rgba(115, 205, 255, 0.16);
+  --summary-border: rgba(128, 184, 240, 0.2);
+  --summary-divider: rgba(255, 255, 255, 0.12);
+  background: var(--summary-surface);
 }
 
 body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-focus-timer .widget-compact-summary,
-body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-focus-timer .widget-inner {
-  background: linear-gradient(150deg, rgba(24, 18, 48, 0.86) 0%, rgba(11, 10, 24, 0.92) 100%);
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .compact-layout-focus-timer {
+  --summary-surface: #251e37;
+  --summary-ink: #f2ecff;
+  --summary-muted: #b4a5d6;
+  --summary-accent: #b79aff;
+  --summary-accent-soft: rgba(183, 154, 255, 0.16);
+  --summary-border: rgba(183, 154, 255, 0.22);
+  --summary-divider: rgba(242, 236, 255, 0.12);
+  background: var(--summary-surface);
 }
 
 body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-quick-note .widget-compact-summary,
-body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-quick-note .widget-inner {
-  background: linear-gradient(150deg, rgba(32, 26, 15, 0.86) 0%, rgba(16, 14, 10, 0.92) 100%);
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .compact-layout-quick-note {
+  --summary-surface: #262017;
+  --summary-ink: #f5ebd6;
+  --summary-muted: #b5a382;
+  --summary-accent: #e5b038;
+  --summary-accent-soft: rgba(229, 176, 56, 0.16);
+  --summary-border: rgba(212, 168, 76, 0.2);
+  --summary-divider: rgba(245, 235, 214, 0.12);
+  background:
+    linear-gradient(180deg, #d8a22a 0%, #d8a22a 4px, transparent 4px),
+    var(--summary-surface);
 }
 
 body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-todo .widget-compact-summary,
-body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-todo .widget-inner {
-  background: linear-gradient(150deg, rgba(12, 34, 32, 0.86) 0%, rgba(8, 18, 20, 0.92) 100%);
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .compact-layout-todo {
+  --summary-surface: #142621;
+  --summary-ink: #e4f5ee;
+  --summary-muted: #8ab0a2;
+  --summary-accent: #38c994;
+  --summary-accent-soft: rgba(56, 201, 148, 0.16);
+  --summary-border: rgba(56, 201, 148, 0.2);
+  --summary-divider: rgba(228, 245, 238, 0.12);
+  background: var(--summary-surface);
 }
 
 body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-calendar .widget-compact-summary,
-body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-calendar .widget-inner {
-  background: linear-gradient(150deg, rgba(38, 15, 26, 0.86) 0%, rgba(18, 9, 16, 0.92) 100%);
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .compact-layout-calendar {
+  --summary-surface: #22201f;
+  --summary-ink: #f3efea;
+  --summary-muted: #a69f98;
+  --summary-accent: #ff5b4f;
+  --summary-accent-soft: rgba(255, 91, 79, 0.16);
+  --summary-border: rgba(243, 239, 234, 0.14);
+  --summary-divider: rgba(243, 239, 234, 0.1);
+  background: var(--summary-surface);
 }
 
 body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-world-clock .widget-compact-summary,
-body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .widget-world-clock .widget-inner {
-  background: linear-gradient(150deg, rgba(14, 24, 44, 0.86) 0%, rgba(8, 12, 22, 0.92) 100%);
+body[data-night-mode="true"]:not([data-icon-mode="tinted"]) .compact-layout-world-clock {
+  --summary-surface: linear-gradient(155deg, #162938 0%, #0e1b26 100%);
+  --summary-ink: #eff6fc;
+  --summary-muted: rgba(196, 218, 236, 0.72);
+  --summary-accent: #62bfe5;
+  --summary-accent-soft: rgba(98, 191, 229, 0.15);
+  --summary-border: rgba(132, 192, 226, 0.2);
+  --summary-divider: rgba(255, 255, 255, 0.12);
+  background: var(--summary-surface);
 }
 
 body[data-night-mode="true"] .ios-dock {
@@ -5589,3 +7675,76 @@ body[data-night-mode="true"] .modal-backdrop {
   background: rgba(2, 4, 10, 0.72);
 }
 
+body[data-night-mode="true"] .dynamic-island {
+  background: rgba(9, 12, 20, 0.95);
+  border-color: rgba(185, 202, 240, 0.22);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* Daily widgets in the grid: the grid's `container: widget-summary / size` replaced the
+   `daily` container name from widgets/daily-small.css, so @container daily queries never matched.
+   Keep both names (size containment preserved for summary queries + cqi/cqb units). */
+.apps-grid.desktop-mixed-grid > .ios-widget.daily-card:not(.widget-in-detail-modal) {
+  container: widget-summary daily / size;
+}
+
+/* 1×1 edit-mode size picker: tiny chevron trigger at top-right (delete badge stays top-left) */
+.ios-widget[data-widget-size="single"] .widget-size-controls {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+body.jiggle-mode .ios-widget[data-widget-size="single"]:not(.widget-in-detail-modal) .card-edit-actions.widget-card-edit-actions,
+.ios-widget[data-widget-size="single"] .card-edit-actions.widget-card-edit-actions {
+  left: auto;
+  right: 2px;
+  top: 2px;
+  max-width: calc(100% - 18px);
+}
+
+.widget-size-select.ui-select-wrap {
+  width: auto;
+  min-width: 0;
+}
+
+.widget-size-select .ui-select-trigger.widget-size-select-trigger {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: rgba(10, 132, 255, 0.92);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.32);
+  cursor: pointer;
+}
+
+.widget-size-select .widget-size-select-trigger .ui-select-trigger-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.widget-size-select .widget-size-select-trigger .ui-select-chevron {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.widget-size-select .widget-size-select-trigger:focus-visible {
+  outline: 2px solid #64d2ff;
+  outline-offset: 1px;
+}
+
+.widget-size-select .widget-size-select-trigger[disabled] {
+  opacity: 0.36;
+  cursor: not-allowed;
+}

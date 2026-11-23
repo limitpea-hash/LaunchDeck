@@ -204,16 +204,10 @@ export function createCompactTopRow({ kickerText, iconNode, accentClass = '' }) 
   );
   const kicker = el('span', { className: 'widget-compact-kicker', textContent: kickerText });
   const left = el('span', { className: 'widget-compact-kicker-wrap' }, iconWrap, kicker);
-  const badge = el('span', {
-    className: 'widget-compact-badge',
-    'aria-hidden': 'true',
-    textContent: '↗',
-  });
   return {
-    topRow: el('div', { className: 'widget-compact-top' }, left, badge),
+    topRow: el('div', { className: 'widget-compact-top' }, left),
     iconWrap,
     kicker,
-    badge,
   };
 }
 

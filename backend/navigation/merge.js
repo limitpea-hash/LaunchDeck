@@ -1,6 +1,6 @@
 import { HttpError, validatePatch } from '../validation.js';
 import { check } from '../features/schema.js';
-import { validateWidgetDocument, widgetDefinitions } from '../features/widgets.js';
+import { migrateWidgetSizes, validateWidgetDocument, widgetDefinitions } from '../features/widgets.js';
 import { validateNavigationBackup, SYSTEM_SITE_PAGES } from './schema.js';
 
 export function mergeNavigationBackup(backup, portal, widgets) {
@@ -20,7 +20,7 @@ export function mergeNavigationBackup(backup, portal, widgets) {
   for (const previous of old.values()) layout.push({ ...structuredClone(previous), enabled: false, order: layout.length });
   check(layout.length <= 24, '合并后的组件配置超过24项，恢复已取消');
   const nextPortal = { ...structuredClone(portal), sites: backup.sites.filter(s => SYSTEM_SITE_PAGES.includes(s.category)) };
-  const nextWidgets = { ...structuredClone(widgets), layout, desktop: structuredClone(backup.desktop) };
+  const nextWidgets = migrateWidgetSizes({ ...structuredClone(widgets), layout, desktop: structuredClone(backup.desktop) });
   validatePatch(nextPortal, true); validateWidgetDocument(nextWidgets, widgets);
   return { portal: nextPortal, widgets: nextWidgets, browserData: {
     pages: structuredClone(backup.pages), customSites: structuredClone(backup.sites.filter(s => !SYSTEM_SITE_PAGES.includes(s.category))),

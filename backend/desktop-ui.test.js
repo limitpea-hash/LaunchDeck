@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import * as model from '../frontend/lib/desktop-layout.js';
+import { createDefaultWidgetState } from '../frontend/lib/feature-client.js';
 import { defaultWidgetState, validateWidgetDocument } from './features/widgets.js';
 
 const sites = [{ id: 'first', category: 'ai' }, { id: 'custom', category: 'page_reading' }];
@@ -28,6 +29,51 @@ test('empty legacy widget layout remains empty instead of silently restoring all
   const value = verify(migrate([]));
   assert.equal(value.layout.filter(w => w.enabled).length, 0);
   assert.equal(value.desktop.placements.filter(p => p.kind === 'widget').length, 0);
+});
+
+test('fixed grid coordinates survive reconciliation and reordering and can move or clear atomically', () => {
+  const { desktop, layout } = verify(migrate());
+  const put = (doc, id, kind, fromPageId, toPageId, cell) =>
+    model.setDesktopItemCell(doc, { id, kind, fromPageId, toPageId, cell });
+  const cell = { row: 1, column: 2 };
+  const site = put(desktop, 'first', 'site', 'all', 'all', cell);
+  assert.equal(desktop.placements.find(item => item.id === 'first')?.cell, undefined);
+  assert.deepEqual(model.getRenderablePageItems({ desktop: site, pageId: 'all', sites, layout })
+    .find(item => item.id === 'first').cell, cell);
+  const reconciled = verify(model.reconcileDesktopWithLayout(site, layout)).desktop;
+  const moved = model.placeDesktopItemBefore(reconciled, { fromPageId: 'all', toPageId: 'all',
+    kind: 'widget', id: 'calendar', beforeKind: 'widget', beforeId: 'clock-weather' });
+  assert.deepEqual(model.getPagePlacements(moved, 'all').find(item => item.id === 'first').cell, cell);
+  assert.equal(put(moved, 'calendar', 'widget', 'all', 'all', cell), moved);
+  const newCell = { row: 2, column: 1 };
+  const next = put(moved, 'first', 'site', 'all', 'ai', newCell);
+  verify({ desktop: next, layout });
+  assert.ok(!model.getPagePlacements(next, 'all').some(item => item.id === 'first'));
+  assert.deepEqual(model.getPagePlacements(next, 'ai').filter(item => item.id === 'first').map(item => item.cell), [newCell]);
+  assert.equal(put(next, 'first', 'site', 'all', 'ai', cell), next);
+  const cleared = put(next, 'first', 'site', 'ai', 'dev', null);
+  assert.equal(model.getPagePlacements(cleared, 'ai').find(item => item.id === 'first').cell, undefined);
+  assert.ok(!model.getPagePlacements(cleared, 'dev').some(item => item.id === 'first'));
+});
+
+test('the dragged card and displaced fixed cards can exchange cells in one desktop change', () => {
+  const { desktop, layout } = verify(migrate());
+  const first = { row: 0, column: 0 };
+  const second = { row: 0, column: 2 };
+  const pin = (doc, id, cell) => model.setDesktopItemCell(doc, {
+    kind: 'widget', id, fromPageId: 'all', toPageId: 'all', cell,
+  });
+  const before = pin(pin(desktop, 'clock-weather', first), 'calendar', second);
+  const plan = { kind: 'widget', id: 'clock-weather', fromPageId: 'all', toPageId: 'all', cell: second,
+    moves: [{ kind: 'widget', id: 'calendar', cell: first }] };
+  const changed = model.applyDesktopCellDrop(before, plan);
+  verify({ desktop: changed, layout });
+  const coordinates = (doc, id) => model.getPagePlacements(doc, 'all').find(item => item.id === id).cell;
+  assert.deepEqual(coordinates(changed, 'clock-weather'), second);
+  assert.deepEqual(coordinates(changed, 'calendar'), first);
+  assert.deepEqual(coordinates(before, 'clock-weather'), first);
+  assert.equal(model.applyDesktopCellDrop(before, { ...plan, moves: [{ kind: 'widget', id: 'missing', cell: first }] }), before);
+  assert.equal(model.applyDesktopCellDrop(before, { ...plan, moves: [] }), before);
 });
 
 test('new home excludes preset copies while keeping widgets, custom sites and category placements', () => {
@@ -70,6 +116,29 @@ test('old default cleanup recognizes only pristine placement order and preserves
   assert.equal(model.doesDesktopMatchLegacyDefaultSnapshot(cleaned.desktop, criteria), false);
 });
 
+test('mixed widget defaults match across entry points and only upgrade unset sizes on a pristine home', () => {
+  assert.deepEqual(createDefaultWidgetState(), defaultWidgetState());
+  const defaultSites = [{ id: 'docs', title: 'Docs', category: 'dev', url: 'https://example.org', pinned: false }];
+  const layout = defaultWidgetState().layout.map(({ size, ...item }) => item);
+  const clock = layout.find(item => item.type === 'clock-weather');
+  clock.size = 'compact';
+  const calendar = layout.find(item => item.type === 'calendar');
+  calendar.config.weekStartsOn = 0;
+  const omitHomeSiteIds = defaultSites.map(site => site.id);
+  const home = model.migrateLegacyDesktop({ sites: defaultSites, layout, omitHomeSiteIds });
+  const options = { sites: defaultSites, defaultSites, omitHomeSiteIds };
+  const resized = model.applyDefaultWidgetSizesToPristineDesktop(home.desktop, home.layout, options);
+  assert.deepEqual(resized, home.layout.map(item => item.id === 'calendar' ? { ...item, size: 'square' } : item));
+  assert.equal(home.layout.find(item => item.id === 'calendar').size, undefined);
+  assert.equal(JSON.stringify(model.normalizeWidgetLayout(resized)), JSON.stringify(resized));
+  assert.equal(model.applyDefaultWidgetSizesToPristineDesktop(home.desktop, resized, options), resized);
+  for (const guard of ['hasUnsyncedLayout', 'hasRestoreMarker']) {
+    assert.equal(model.applyDefaultWidgetSizesToPristineDesktop(home.desktop, home.layout, { ...options, [guard]: true }), home.layout);
+  }
+  const rearranged = model.movePlacementToPage(home.desktop, { fromPageId: 'all', toPageId: 'dev', kind: 'widget', id: 'calendar' });
+  assert.equal(model.applyDefaultWidgetSizesToPristineDesktop(rearranged, home.layout, options), home.layout);
+});
+
 test('mixed ordering moves widgets between sites, persists across reconciliation, and merges site mirrors on cross-page moves', () => {
   const value = migrate();
   let desktop = model.reorderPlacementInPage(value.desktop, { pageId: 'all', draggedKind: 'widget', draggedId: 'calendar', targetKind: 'site', targetId: 'first' });
@@ -82,18 +151,29 @@ test('mixed ordering moves widgets between sites, persists across reconciliation
   assert.equal(reconciled.desktop.placements.find(p => p.id === 'first').pageId, 'ai');
 });
 
+test('first add creates only the chosen daily widget row and keeps old layout sizes', () => {
+  const old = migrate();
+  assert.deepEqual(old.layout, defaultWidgetState().layout);
+  const added = verify(model.enableWidgetOnPage(old, { widgetId: 'today-dashboard', pageId: 'page_reading' }));
+  assert.deepEqual(added.layout.slice(0, old.layout.length), old.layout);
+  assert.deepEqual(added.layout.at(-1), {
+    id: 'today-dashboard', type: 'today-dashboard', enabled: true, order: 6, size: 'large', config: {},
+  });
+  assert.equal(added.desktop.placements.find(item => item.id === 'today-dashboard').pageId, 'page_reading');
+});
+
 test('widget removal and re-add preserve size and configuration while page deletion moves unique placements home', () => {
   let value = migrate();
   const calendar = value.layout.find(w => w.id === 'calendar');
   calendar.config.weekStartsOn = 0;
-  calendar.size = 'wide';
+  calendar.size = 'full';
   value = verify(model.disableWidget(value, 'calendar'));
   assert.equal(value.desktop.placements.some(p => p.id === 'calendar'), false);
-  assert.equal(value.layout.find(w => w.id === 'calendar').size, 'wide');
+  assert.equal(value.layout.find(w => w.id === 'calendar').size, 'full');
   value = verify(model.enableWidgetOnPage(value, { widgetId: 'calendar', pageId: 'page_reading' }));
   const restored = value.layout.find(w => w.id === 'calendar');
   assert.equal(restored.config.weekStartsOn, 0);
-  assert.equal(restored.size, 'wide');
+  assert.equal(restored.size, 'full');
   value.desktop = model.deleteDesktopPage(value.desktop, 'page_reading');
   verify(value);
   assert.equal(value.desktop.placements.find(p => p.id === 'calendar').pageId, 'all');
@@ -131,11 +211,15 @@ test('preview insertion merges target site mirrors while retaining unrelated unr
   verify({ ...value, desktop });
 });
 
-test('reused widget drag handlers use the current page after a previous cross-page move', () => {
+function desktopDragSource() {
   const source = readFileSync(new URL('../frontend/app.js', import.meta.url), 'utf8');
   const start = source.indexOf('function bindDesktopCardDragAndLongPress(');
-  const end = source.indexOf('function createAppItemElement(', start);
+  const end = source.indexOf('\nfunction ', start + 1);
   assert.ok(start >= 0 && end > start);
+  return source.slice(start, end);
+}
+
+test('reused widget drag handlers use the current page after a previous cross-page move', () => {
   const events = new Map();
   const card = { dataset: {}, closest: () => null, classList: { add() {}, remove() {} }, addEventListener(name, fn) {
     if (!events.has(name)) events.set(name, []);
@@ -148,7 +232,7 @@ test('reused widget drag handlers use the current page after a previous cross-pa
     clearActiveLongPress() {}, closeMovePagePopover() {}, ensureDesktopPointerDragController() {},
     stepDesktopItemInPage(...args) { steps.push(args); },
   };
-  runInNewContext(`${source.slice(start, end)};bindDesktopCardDragAndLongPress(card,{pageId:'all',kind:'widget',id:'calendar'});`, context);
+  runInNewContext(`${desktopDragSource()};bindDesktopCardDragAndLongPress(card,{pageId:'all',kind:'widget',id:'calendar'});`, context);
   card.dataset.pageId = 'design';
   const transfer = { setData() {} };
   for (const handler of events.get('dragstart')) handler({ dataTransfer: transfer });
@@ -158,9 +242,6 @@ test('reused widget drag handlers use the current page after a previous cross-pa
 });
 
 test('application long press passes the original touch into the controller and leaves detail inputs alone', () => {
-  const source = readFileSync(new URL('../frontend/app.js', import.meta.url), 'utf8');
-  const start = source.indexOf('function bindDesktopCardDragAndLongPress(');
-  const end = source.indexOf('function createAppItemElement(', start);
   const handlers = new Map();
   let inDetail = false;
   let pending = null;
@@ -176,7 +257,7 @@ test('application long press passes the original touch into the controller and l
     desktopPointerDragController: { startFromLongPress: args => calls.push(args) },
     setTimeout(fn) { pending = fn; return 1; }, clearTimeout() {},
   };
-  runInNewContext(`${source.slice(start, end)};bindDesktopCardDragAndLongPress(card,{pageId:'all',kind:'widget',id:'calendar'});`, { ...context, card });
+  runInNewContext(`${desktopDragSource()};bindDesktopCardDragAndLongPress(card,{pageId:'all',kind:'widget',id:'calendar'});`, { ...context, card });
   const event = { pointerId: 19, pointerType: 'touch', button: 0, clientX: 100, clientY: 150,
     target: { closest: () => null } };
   for (const fn of handlers.get('pointerdown')) fn(event);
@@ -189,6 +270,12 @@ test('application long press passes the original touch into the controller and l
   assert.equal(calls[0].startX, 100);
   assert.equal(calls[0].startY, 150);
   assert.equal(calls[0].immediateLift, true);
+  state.jiggleMode = false;
+  card.dataset.savedCell = 'true';
+  for (const fn of handlers.get('pointerdown')) fn(event);
+  pending();
+  assert.equal(state.jiggleMode, true);
+  assert.equal(calls.length, 2, 'saved positions can also be moved by long press');
   state.jiggleMode = false; inDetail = true; pending = null;
   for (const fn of handlers.get('pointerdown')) fn(event);
   assert.equal(pending, null, 'holding a detail input must not enter desktop editing');
@@ -214,7 +301,7 @@ test('application actions save mixed moves and removal through the real layout h
     ...model, state, structuredClone,
     getEffectiveDesktopForRender: () => state.widgetState.desktop,
     featureClient: { saveWidgetsState: patch => saves.push(structuredClone(patch)) },
-    widgetHost: { destroyWidget() {} },
+    widgetHost: { destroyWidget() {}, updateAll() {} },
     renderAll() {}, renderAddWidgetModalList() {}, savePagesToStorage() {},
   };
   runInNewContext(functions, context);

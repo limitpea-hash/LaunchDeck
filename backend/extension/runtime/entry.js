@@ -1,5 +1,5 @@
 import { installFetchBridge } from './bridge.js';
-import { NETWORK_ORIGINS } from './environment.js';
+import { createLocationPermissions, NETWORK_ORIGINS } from './environment.js';
 import { validateBrowserData } from './backup.js';
 import { validatePatch } from '../../validation.js';
 import { validateWidgetPatch } from '../../features/widgets.js';
@@ -7,8 +7,20 @@ import { validateSettingsPatch } from '../../features/settings.js';
 import { installFaviconEnhancement, browserFaviconUrl, presetIconKey } from './favicons.js';
 import { iconPresets } from '../icon-presets.js';
 import { mergeNavigationSites } from '../../navigation/schema.js';
+import { createExtensionNotificationClient } from './notifications.js';
+import { EXCHANGE_RATE_ORIGIN } from '../../features/currencies.js';
 
 installFetchBridge();
+window.LaunchDeckUpdate = Object.freeze({
+  version: chrome.runtime.getManifest().version,
+  requestCurrencyPermission: () => chrome.permissions.request({ origins: [`${EXCHANGE_RATE_ORIGIN}/*`] }),
+});
+window.LaunchDeckNotifications = createExtensionNotificationClient({
+  permissions: chrome.permissions,
+  request: body => json('/api/notifications', body && {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }),
+});
 
 function node(tag, text, className) {
   const element = document.createElement(tag);
@@ -32,37 +44,37 @@ function hydrateBrowserData(data, portal) {
 }
 
 function installPermissionTools() {
+  window.LaunchDeckLocation = createLocationPermissions(chrome.permissions);
   const locationPanel = document.getElementById('settingsPanelLocation');
   const card = node('section', null, 'extension-local-card');
-  card.append(node('strong', '联网天气与城市搜索'), node('p', '导航、便签与待办始终保存在此浏览器。天气和 IP 近似位置需要连接指定的数据服务，允许后将刷新页面。'));
-  const enable = node('button', '启用联网并刷新', 'ui-btn ui-btn-primary ui-btn-sm');
+  card.append(node('strong', '联网天气与城市搜索'), node('p', '启用后，自动定位可查询 IP 近似位置和天气。也可单独搜索城市或获取浏览器位置。'));
+  const enable = node('button', '启用联网并刷新天气', 'ui-btn ui-btn-primary ui-btn-sm');
   enable.type = 'button';
   const status = node('span', '', 'extension-local-status');
+  status.setAttribute('role', 'status');
+  const showGranted = () => {
+    enable.textContent = '联网权限已启用';
+    enable.disabled = true;
+  };
   enable.addEventListener('click', async () => {
+    enable.disabled = true;
     try {
       const granted = await chrome.permissions.request({ origins: NETWORK_ORIGINS });
-      if (granted) location.reload();
-      else status.textContent = '未启用联网，离线功能可继续使用。';
+      if (granted) {
+        status.textContent = '';
+        showGranted();
+        document.getElementById('saveApiConfigBtn')?.click();
+        return;
+      }
+      status.textContent = '未启用联网，离线功能可继续使用。';
     } catch { status.textContent = '权限申请失败，请稍后重试。'; }
+    enable.disabled = false;
   });
   card.append(enable, status);
   locationPanel?.prepend(card);
   chrome.permissions.contains({ origins: NETWORK_ORIGINS }).then(granted => {
-    if (granted) { enable.textContent = '联网权限已启用'; enable.disabled = true; }
+    if (granted) showGranted();
   }).catch(() => {});
-
-  let geoGranted = false;
-  document.addEventListener('click', async event => {
-    const trigger = event.target.closest?.('#requestBrowserGeoBtn');
-    if (!trigger || geoGranted) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    try {
-      geoGranted = await chrome.permissions.request({ permissions: ['geolocation'] });
-      if (geoGranted) trigger.click();
-      else { const text = document.getElementById('locationStatusText'); if (text) text.textContent = '定位未授权，可继续使用 IP 近似位置或手动城市。'; }
-    } catch { const text = document.getElementById('locationStatusText'); if (text) text.textContent = '定位授权失败，请稍后重试。'; }
-  }, true);
 
   const autoOption = document.querySelector('#clockModeSelect option[value="automatic"]');
   if (autoOption) autoOption.textContent = '自动（跟随设备时间）';

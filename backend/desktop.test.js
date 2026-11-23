@@ -46,6 +46,14 @@ test('desktop rejects ambiguous order, duplicate widgets, missing references and
     d => { d.desktop.placements[0].order = -1; },
     d => { d.desktop.placements[0].order = 1; },
     d => { d.desktop.placements[0].html = '<script>evil()</script>'; },
+    d => { d.desktop.placements[0].cell = null; },
+    d => { d.desktop.placements[0].cell = { row: -1, column: 0 }; },
+    d => { d.desktop.placements[0].cell = { row: 50, column: 0 }; },
+    d => { d.desktop.placements[0].cell = { row: 0, column: 48 }; },
+    d => { d.desktop.placements[0].cell = { row: 0, column: '3' }; },
+    d => { d.desktop.placements[0].cell = { row: 0 }; },
+    d => { d.desktop.placements[0].cell = { row: 0, column: 0, css: '1 / span 50' }; },
+    d => { d.desktop.placements[0].cell = d.desktop.placements[1].cell = { row: 0, column: 0 }; },
     d => { d.desktop.placements.push({ ...d.desktop.placements[1], pageId: 'media', order: 0 }); },
     d => { d.desktop.placements.push({ ...d.desktop.placements[0], order: 100 }); },
     d => { d.layout[0].enabled = false; },
@@ -65,6 +73,9 @@ test('SQLite validates merged layout atomically and retains mixed positions on p
     const store = createFeatureStore(db);
     const state = defaultWidgetState();
     const desktop = desktopFor(state);
+    desktop.placements[0].cell = { row: 0, column: 2 };
+    desktop.placements[1].cell = { row: 1, column: 2 };
+    desktop.placements.at(-1).cell = { row: 0, column: 2 };
     const patch = (value, rev) => store.patch('widgets', defaultWidgetState, value, `"${rev}"`, validateWidgetPatch, validateWidgetDocument);
     assert.equal(patch({ desktop }, 0).revision, 1);
     const hidden = state.layout.map((w, i) => ({ ...w, enabled: i !== 0 }));
@@ -87,6 +98,8 @@ test('extension mixed desktop round-trips through worker recreation and backup w
   let documents = createLocalDocuments(storage);
   const initial = (await documents.read('widgets')).state;
   const desktop = desktopFor(initial);
+  desktop.placements[0].cell = { row: 49, column: 47 };
+  desktop.placements[1].cell = { row: 2, column: 0 };
   await documents.patch('widgets', { desktop }, '"0"');
   const hidden = initial.layout.map((w, i) => ({ ...w, enabled: i !== 0 }));
   await assert.rejects(documents.patch('widgets', { layout: hidden }, '"1"'), error => error.status === 400);

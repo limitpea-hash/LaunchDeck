@@ -1,0 +1,69 @@
+/* ==========================================================================
+   LaunchDeck Precise Grid Cell Pointer Drag Preview & Pinned Card Drag Styles
+   Pinned cards use normal edit grab cursors and precise/invalid drop
+   placeholders stay crisp in day & night mode.
+   ========================================================================== */
+
+body.jiggle-mode .apps-grid.desktop-mixed-grid [data-fixed-cell="true"],
+body.jiggle-mode .apps-grid.desktop-mixed-grid [data-saved-cell="true"] {
+  cursor: grab !important;
+  -webkit-user-drag: none !important;
+}
+
+body.jiggle-mode .apps-grid.desktop-mixed-grid [data-fixed-cell="true"]:active,
+body.jiggle-mode .apps-grid.desktop-mixed-grid [data-saved-cell="true"]:active {
+  cursor: grabbing !important;
+}
+
+.desktop-drag-placeholder.is-cell-drop-preview {
+  border-style: dashed;
+  border-width: 2px;
+  border-color: rgba(100, 210, 255, 0.92);
+  background: rgba(10, 132, 255, 0.22);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 8px 22px -6px rgba(10, 132, 255, 0.36);
+  pointer-events: auto;
+  z-index: 3;
+}
+
+.desktop-drag-placeholder.is-cell-drop-invalid {
+  border-style: dashed !important;
+  border-width: 2px !important;
+  border-color: rgba(255, 105, 97, 0.96) !important;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 69, 58, 0.26) 0px,
+    rgba(255, 69, 58, 0.26) 8px,
+    rgba(255, 69, 58, 0.14) 8px,
+    rgba(255, 69, 58, 0.14) 16px
+  ) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 180, 174, 0.34),
+    0 8px 22px -6px rgba(255, 69, 58, 0.4) !important;
+  z-index: 4;
+}
+
+body[data-night-mode="true"] .desktop-drag-placeholder.is-cell-drop-preview {
+  border-color: rgba(122, 211, 255, 0.94);
+  background: rgba(10, 132, 255, 0.26);
+}
+
+body[data-night-mode="true"] .desktop-drag-placeholder.is-cell-drop-invalid {
+  border-color: rgba(255, 118, 110, 0.98) !important;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 69, 58, 0.32) 0px,
+    rgba(255, 69, 58, 0.32) 8px,
+    rgba(255, 69, 58, 0.16) 8px,
+    rgba(255, 69, 58, 0.16) 16px
+  ) !important;
+}
+
+.apps-grid.desktop-mixed-grid [data-cell-preview-displaced="true"] {
+  z-index: 2;
+}
+
+.apps-grid.desktop-mixed-grid.is-cell-drop-invalid.drag-target-active {
+  outline-color: rgba(255, 105, 97, 0.84);
+}

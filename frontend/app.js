@@ -11,6 +11,7 @@ import {
   DEFAULT_WIDGET_DEFINITIONS,
   getSupportedSizesForWidgetType,
   normalizeWidgetSize,
+  LEGACY_WIDGET_SIZES,
   createDefaultWidgetState,
   normalizeWidgetState,
   createDefaultDeviceSettings,
@@ -22,6 +23,7 @@ import {
   migrateLegacyDesktop,
   doesDesktopMatchLegacyDefaultSnapshot,
   stripDefaultSitePlacementsFromHomePage,
+  applyDefaultWidgetSizesToPristineDesktop,
   getPagePlacements,
   getFolderById,
   getRenderablePageItems,
@@ -29,7 +31,9 @@ import {
   stepPlacementInPage,
   movePlacementToPage,
   placeDesktopItemBefore,
+  applyDesktopCellDrop,
   enableWidgetOnPage,
+  MAX_WIDGET_LAYOUT_ENTRIES,
   disableWidget,
   addSitePlacement,
   removeSitePlacements,
@@ -59,6 +63,7 @@ import { createWidgetHost, WIDGET_MODULE_MAP } from './widgets/registry.js';
 import { createDesktopPointerDragController } from './lib/desktop-pointer-drag.js';
 import { createFolderScrollController } from './lib/folder-pointer-scroll.js';
 import { createDockOverflowController } from './lib/dock-overflow.js';
+import { createDockMagnification } from './lib/dock-magnification.js';
 import {
   DISPLAY_MODES,
   MOBILE_DISPLAY_MODE_STORAGE_KEY,
@@ -70,6 +75,8 @@ import {
   computeSingleScreenMetrics,
   resolveWidgetDisplaySize,
   getWidgetGridSpan,
+  getFixedCellsForPage,
+  planDesktopCellDrop,
   packCategoryItemsIntoViews,
   buildScreenViewsModel,
   resolveViewDropBeforeAnchor,
@@ -80,6 +87,8 @@ import {
   NAVIGATION_RESTORE_ID_STORAGE_KEY,
   mergeNavigationSites,
 } from './lib/navigation-backup.js';
+import { createNotificationsUIController } from './lib/notifications-ui.js';
+import { createUpdateUIController } from './lib/update-ui.js';
 
 const STORAGE_KEYS = {
   PAGES: 'ios18_nav_pages_v1',
@@ -469,9 +478,14 @@ const clockController = createClockController();
 const featureClient = createFeatureClient();
 
 const WIDGET_SIZE_OPTIONS = Object.freeze([
+  { value: 'single', shortLabel: '1×1', label: '小方', ariaLabel: '小方块尺寸 (1列×1行)' },
   { value: 'compact', shortLabel: '2×1', label: '紧凑', ariaLabel: '紧凑尺寸 (2列×1行)' },
+  { value: 'strip', shortLabel: '4×1', label: '横条', ariaLabel: '横条尺寸 (4列×1行)' },
   { value: 'square', shortLabel: '2×2', label: '方卡', ariaLabel: '方卡尺寸 (2列×2行)' },
-  { value: 'wide', shortLabel: '4×2', label: '横卡', ariaLabel: '横卡尺寸 (4列×2行)' },
+  { value: 'landscape', shortLabel: '3×2', label: '横卡', ariaLabel: '横卡尺寸 (3列×2行)' },
+  { value: 'tall', shortLabel: '2×3', label: '竖卡', ariaLabel: '竖卡尺寸 (2列×3行)' },
+  { value: 'large', shortLabel: '3×3', label: '大方', ariaLabel: '大方卡尺寸 (3列×3行)' },
+  { value: 'full', shortLabel: '4×4', label: '大月历', ariaLabel: '大尺寸 (4列×4行)' },
 ]);
 
 const state = {
@@ -504,7 +518,6 @@ const state = {
     tintHue: 215,
     tintSat: 82,
     focusActive: false,
-    nightMode: false,
   },
   widgetRegistry: structuredClone(DEFAULT_WIDGET_DEFINITIONS),
   widgetState: createDefaultWidgetState(),
@@ -546,10 +559,40 @@ const widgetHost = createWidgetHost((widgetItem) => ({
   },
   saveWidgetConfig: (nextConfig) => {
     if (!widgetItem) return;
+    const safeConfig = nextConfig && typeof nextConfig === 'object' ? structuredClone(nextConfig) : {};
     state.widgetState.layout = state.widgetState.layout.map(item =>
-      item.id === widgetItem.id ? { ...item, config: structuredClone(nextConfig) } : item
+      item.id === widgetItem.id ? { ...item, config: safeConfig } : item
     );
     featureClient.saveWidgetsState({ layout: state.widgetState.layout });
+    // Live-propagate so cross-widget readers (today dashboard, focus launcher) see the new config
+    widgetHost.updateAll({ layout: state.widgetState.layout });
+  },
+  getWidgetConfig: () => {
+    const latest = state.widgetState.layout.find(item => item && item.id === widgetItem?.id);
+    return structuredClone(latest?.config || widgetItem?.config || {});
+  },
+  // Snapshot of the full widget layout (including disabled items, e.g. a hidden focus timer's
+  // durations or countdown targets) for daily widgets that summarize other widgets.
+  getLayout: () => structuredClone(Array.isArray(state.widgetState.layout) ? state.widgetState.layout : []),
+  getWidgetConfigByType: (type) => {
+    const layoutList = Array.isArray(state.widgetState.layout) ? state.widgetState.layout : [];
+    const match =
+      layoutList.find(item => item && item.type === type && item.enabled) ||
+      layoutList.find(item => item && item.type === type);
+    if (match?.config && typeof match.config === 'object') return structuredClone(match.config);
+    const def =
+      state.widgetRegistry.find(d => d && d.type === type) ||
+      DEFAULT_WIDGET_DEFINITIONS.find(d => d.type === type);
+    return structuredClone(def?.defaultConfig || {});
+  },
+  getWidgetRegistry: () => structuredClone(state.widgetRegistry),
+  getDeviceSettings: () => structuredClone(state.deviceSettings),
+  openWidgetDetail: () => {
+    const rootEl = document.querySelector(
+      `.apps-grid .ios-widget[data-widget-id="${CSS.escape(String(widgetItem?.id || ''))}"]`
+    );
+    const latest = state.widgetState.layout.find(item => item && item.id === widgetItem?.id);
+    if (rootEl && latest) openWidgetDetailModal(rootEl, latest);
   },
   getEnvironmentSnapshot: () => structuredClone(state.environment),
   refreshEnvironmentAndWeather: (force = false) => refreshEnvironmentAndWeather(force),
@@ -577,12 +620,16 @@ function getBackendSyncableSites(sitesList = state.sites) {
       if (site.keywords !== undefined) {
         clean.keywords = String(site.keywords).slice(0, 300);
       }
+      // Optional page tile size: only the non-default 2×2 is persisted (missing = 1×1)
+      if (site.size === 'square') {
+        clean.size = 'square';
+      }
       return clean;
     });
 }
 
 function getBackendSyncablePrefs(prefsObj = state.prefs) {
-  return {
+  const clean = {
     iconMode: ['light', 'dark', 'tinted'].includes(prefsObj.iconMode) ? prefsObj.iconMode : 'light',
     iconSize: ['small', 'large'].includes(prefsObj.iconSize) ? prefsObj.iconSize : 'small',
     wallpaper: ['ios18-bloom', 'ios18-pink', 'ios18-teal', 'sequoia-gold', 'titanium-dark'].includes(
@@ -594,8 +641,11 @@ function getBackendSyncablePrefs(prefsObj = state.prefs) {
     tintHue: Math.min(360, Math.max(0, Math.round(Number(prefsObj.tintHue) || 215))),
     tintSat: Math.min(100, Math.max(25, Math.round(Number(prefsObj.tintSat) || 82))),
     focusActive: Boolean(prefsObj.focusActive),
-    nightMode: Boolean(prefsObj.nightMode),
   };
+  if (typeof prefsObj.nightMode === 'boolean') {
+    clean.nightMode = prefsObj.nightMode;
+  }
+  return clean;
 }
 
 // ==========================================================================
@@ -711,6 +761,16 @@ function getEffectiveDesktopForRender() {
 function finalizeDesktopMigrationOrReconcile(rawWidgetState, registry, { persist = true } = {}) {
   const defs = Array.isArray(registry) && registry.length > 0 ? registry : DEFAULT_WIDGET_DEFINITIONS;
   const normalized = normalizeWidgetStateWithRegistry(rawWidgetState, defs);
+  const pristineSnapshotOptions = {
+    pages: state.pages,
+    sites: state.sites,
+    defaultPages: DEFAULT_PAGES,
+    defaultSites: DEFAULT_SITES,
+    definitions: defs,
+    hasUnsyncedLayout: hasUnsyncedWidgetLayoutInStorage(),
+    hasRestoreMarker: hasKnownNavigationRestoreMarker(),
+  };
+  const defaultWidgetOptions = { ...pristineSnapshotOptions, omitHomeSiteIds: DEFAULT_SITE_IDS };
 
   if (normalized.desktop && typeof normalized.desktop === 'object') {
     let reconciled = reconcileDesktopWithLayout(normalized.desktop, normalized.layout, {
@@ -718,15 +778,7 @@ function finalizeDesktopMigrationOrReconcile(rawWidgetState, registry, { persist
       definitions: defs,
     });
 
-    const matchesLegacyDefault = doesDesktopMatchLegacyDefaultSnapshot(reconciled.desktop, {
-      pages: state.pages,
-      sites: state.sites,
-      defaultPages: DEFAULT_PAGES,
-      defaultSites: DEFAULT_SITES,
-      definitions: defs,
-      hasUnsyncedLayout: hasUnsyncedWidgetLayoutInStorage(),
-      hasRestoreMarker: hasKnownNavigationRestoreMarker(),
-    });
+    const matchesLegacyDefault = doesDesktopMatchLegacyDefaultSnapshot(reconciled.desktop, pristineSnapshotOptions);
 
     if (matchesLegacyDefault) {
       reconciled = stripDefaultSitePlacementsFromHomePage(reconciled.desktop, reconciled.layout, {
@@ -734,6 +786,17 @@ function finalizeDesktopMigrationOrReconcile(rawWidgetState, registry, { persist
         fallbackPages: state.pages,
         definitions: defs,
       });
+    }
+
+    if (persist) {
+      reconciled = {
+        ...reconciled,
+        layout: applyDefaultWidgetSizesToPristineDesktop(
+          reconciled.desktop,
+          reconciled.layout,
+          defaultWidgetOptions
+        ),
+      };
     }
 
     const changed =
@@ -759,12 +822,23 @@ function finalizeDesktopMigrationOrReconcile(rawWidgetState, registry, { persist
   }
 
   // Legacy data migration (executed once after both sites & widgets have finished loading)
-  const migrated = buildInitialDesktopLayout({
+  let migrated = buildInitialDesktopLayout({
     pages: state.pages,
     sites: state.sites,
     layout: normalized.layout,
     definitions: defs,
   });
+
+  if (persist) {
+    migrated = {
+      ...migrated,
+      layout: applyDefaultWidgetSizesToPristineDesktop(
+        migrated.desktop,
+        migrated.layout,
+        defaultWidgetOptions
+      ),
+    };
+  }
 
   state.widgetState = {
     layout: migrated.layout,
@@ -803,6 +877,8 @@ function commitDesktopAndLayout(desktop = getEffectiveDesktopForRender(), layout
   });
   renderAll();
   renderAddWidgetModalList();
+  // Daily widgets (today dashboard, focus launcher) summarize other widgets' layout/config
+  widgetHost.updateAll({ layout: state.widgetState.layout, todos: state.widgetState.todos });
 }
 
 let pendingNavigationSiteOrder = null;
@@ -878,6 +954,9 @@ async function bootstrapApp() {
     });
   }
 
+  // Initialize notification subscription pill & settings inbox promptly from cached state before network
+  notificationsUIController.init().catch(() => {});
+
   // Render initial local state without writing empty desktop before migration
   renderAll();
 
@@ -903,12 +982,17 @@ async function bootstrapApp() {
         writeLocalStorage(STORAGE_KEYS.SITES, JSON.stringify(state.sites));
       }
       if (remoteState.prefs && typeof remoteState.prefs === 'object') {
-        state.prefs = {
+        const nextPrefs = {
           ...state.prefs,
           ...remoteState.prefs,
-          nightMode: Boolean(remoteState.prefs.nightMode),
           focusActive: Boolean(remoteState.prefs.focusActive),
         };
+        if (typeof remoteState.prefs.nightMode === 'boolean') {
+          nextPrefs.nightMode = remoteState.prefs.nightMode;
+        } else {
+          delete nextPrefs.nightMode;
+        }
+        state.prefs = nextPrefs;
         writeLocalStorage(STORAGE_KEYS.PREFS, JSON.stringify(state.prefs));
       }
       if (typeof remoteState.note === 'string') {
@@ -936,12 +1020,18 @@ async function bootstrapApp() {
     featureClient.getTimeZones(),
   ]);
 
-  state.widgetRegistry = registry;
+  state.widgetRegistry = mergeWidgetRegistryWithBuiltins(registry);
   state.deviceSettings = loadedDeviceSettings;
   state.availableTimeZones = timeZones;
 
   // Perform one-time migration if desktop is null, or reconcile existing desktop with layout
-  finalizeDesktopMigrationOrReconcile(loadedWidgetState, registry, { persist: true });
+  finalizeDesktopMigrationOrReconcile(loadedWidgetState, state.widgetRegistry, { persist: true });
+
+  widgetHost.updateAll({
+    note: state.note,
+    todos: state.widgetState.todos,
+    layout: state.widgetState.layout,
+  });
 
   renderAll();
   syncSettingsControlsFromState();
@@ -959,6 +1049,113 @@ async function bootstrapApp() {
 function normalizeWidgetStateWithRegistry(rawState, registry) {
   const defs = Array.isArray(registry) && registry.length > 0 ? registry : DEFAULT_WIDGET_DEFINITIONS;
   return normalizeWidgetState(rawState, defs);
+}
+
+// Server/extension registries from older builds may lack newer builtin definitions
+// (e.g. imported-card, currency-converter); append missing builtin defs so stored rows survive reconcile.
+function mergeWidgetRegistryWithBuiltins(registry) {
+  const base = Array.isArray(registry) && registry.length > 0 ? registry : structuredClone(DEFAULT_WIDGET_DEFINITIONS);
+  const known = new Set(base.filter(d => d && d.type).map(d => d.type));
+  const missing = DEFAULT_WIDGET_DEFINITIONS.filter(d => !known.has(d.type)).map(d => structuredClone(d));
+  return missing.length ? [...base, ...missing] : base;
+}
+
+/** Display title for a widget row: imported cards use their own config.title. */
+function getWidgetDisplayTitle(widgetItem, fallback = '小组件') {
+  if (!widgetItem) return fallback;
+  if (widgetItem.type === 'imported-card') {
+    const raw = typeof widgetItem.config?.title === 'string' ? widgetItem.config.title.trim() : '';
+    if (raw) return raw.slice(0, 60);
+  }
+  const def =
+    state.widgetRegistry.find((d) => d && d.type === widgetItem.type) ||
+    DEFAULT_WIDGET_DEFINITIONS.find((d) => d.type === widgetItem.type);
+  return def?.title || widgetItem.type || fallback;
+}
+
+function generateImportedWidgetId(existingIds) {
+  const taken = existingIds instanceof Set ? existingIds : new Set(existingIds || []);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const bytes = new Uint8Array(8);
+    globalThis.crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    const id = `imported_${hex}`;
+    if (!taken.has(id)) return id;
+  }
+  return null;
+}
+
+/**
+ * Called only from the explicit confirm button in 「更新与组件」. Appends a new imported-card row
+ * and places it on the current category page atomically via enableWidgetOnPage + commitDesktopAndLayout.
+ */
+function importWidgetCardToCurrentPage({ size: rawSize, config } = {}) {
+  if (state.navigationImportInProgress) {
+    return { ok: false, message: '正在恢复导航备份，请完成后再导入组件' };
+  }
+  const supported = getSupportedSizesForWidgetType('imported-card', state.widgetRegistry);
+  // Older packages may still declare retired sizes (e.g. wide); map them via legacySizes
+  const size =
+    typeof rawSize === 'string' && LEGACY_WIDGET_SIZES.includes(rawSize)
+      ? normalizeWidgetSize(rawSize, 'imported-card', state.widgetRegistry)
+      : rawSize;
+  if (typeof size !== 'string' || !supported.includes(size)) {
+    return { ok: false, message: '组件包尺寸不受支持' };
+  }
+  if (!config || typeof config !== 'object' || Array.isArray(config) || typeof config.title !== 'string') {
+    return { ok: false, message: '组件包配置无效' };
+  }
+  if (!globalThis.crypto || typeof globalThis.crypto.getRandomValues !== 'function') {
+    return { ok: false, message: '当前浏览器不支持安全随机数，无法生成组件标识' };
+  }
+  const layout = normalizeWidgetLayout(state.widgetState.layout, state.widgetRegistry);
+  if (layout.length >= MAX_WIDGET_LAYOUT_ENTRIES) {
+    return {
+      ok: false,
+      message: `小组件记录已达 ${MAX_WIDGET_LAYOUT_ENTRIES} 个上限（已隐藏的组件也计入在内，隐藏不会释放名额），暂时无法导入新卡片；可在编辑菜单中重新启用已隐藏的组件继续使用`,
+    };
+  }
+  const id = generateImportedWidgetId(new Set(layout.map((w) => w.id)));
+  if (!id) {
+    return { ok: false, message: '无法生成唯一组件标识，请重试' };
+  }
+  const nextLayout = [
+    ...layout,
+    {
+      id,
+      type: 'imported-card',
+      enabled: false,
+      order: layout.length,
+      size,
+      config: structuredClone(config),
+    },
+  ];
+  const currentPage = state.pages[state.currentPageIndex] || state.pages[0] || { id: 'all', title: '全部' };
+  const res = enableWidgetOnPage(
+    { layout: nextLayout, desktop: getEffectiveDesktopForRender() },
+    { widgetId: id, pageId: currentPage.id, definitions: state.widgetRegistry }
+  );
+  const placed = res?.layout?.find((w) => w.id === id);
+  if (res?.added === false || !placed || !placed.enabled) {
+    return { ok: false, message: '未能放置导入组件，桌面未做任何修改' };
+  }
+  commitDesktopAndLayout(res.desktop, res.layout);
+  return {
+    ok: true,
+    message: `已添加「${String(config.title).slice(0, 60)}」到「${currentPage.title || '当前导航页'}」`,
+  };
+}
+
+let updateUIController = null;
+function getUpdateUIController() {
+  if (!updateUIController) {
+    updateUIController = createUpdateUIController({
+      onConfirmImport: (card) => importWidgetCardToCurrentPage(card),
+      getCurrentPageTitle: () =>
+        (state.pages[state.currentPageIndex] || state.pages[0] || {}).title || '',
+    });
+  }
+  return updateUIController;
 }
 
 function initBackendSyncStatusListener() {
@@ -1074,12 +1271,17 @@ function loadStateFromStorage() {
     if (savedPrefs !== null) {
       const parsedPrefs = JSON.parse(savedPrefs);
       if (parsedPrefs && typeof parsedPrefs === 'object') {
-        state.prefs = {
+        const nextPrefs = {
           ...state.prefs,
           ...parsedPrefs,
-          nightMode: Boolean(parsedPrefs.nightMode),
           focusActive: Boolean(parsedPrefs.focusActive),
         };
+        if (typeof parsedPrefs.nightMode === 'boolean') {
+          nextPrefs.nightMode = parsedPrefs.nightMode;
+        } else {
+          delete nextPrefs.nightMode;
+        }
+        state.prefs = nextPrefs;
       }
     }
 
@@ -1138,13 +1340,59 @@ function saveNoteToStorage(noteText, syncToBackend = true) {
 // ==========================================================================
 // Apply iOS 18 Appearance Preferences
 // ==========================================================================
+let systemColorSchemeMediaList = null;
+
+function isSystemDarkSchemePreferred() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false;
+  }
+  try {
+    return Boolean(window.matchMedia('(prefers-color-scheme: dark)').matches);
+  } catch {
+    return false;
+  }
+}
+
+function resolveEffectiveNightMode(prefsObj = state.prefs) {
+  if (prefsObj && typeof prefsObj.nightMode === 'boolean') {
+    return prefsObj.nightMode;
+  }
+  return isSystemDarkSchemePreferred();
+}
+
+function bindSystemColorSchemeListener() {
+  if (systemColorSchemeMediaList || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return;
+  }
+  try {
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    if (!mql) return;
+    systemColorSchemeMediaList = mql;
+    const onSchemeChange = () => {
+      if (typeof state.prefs?.nightMode !== 'boolean') {
+        applyPreferencesToDOM();
+      }
+    };
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', onSchemeChange);
+    } else if (typeof mql.addListener === 'function') {
+      mql.addListener(onSchemeChange);
+    }
+  } catch {
+    // Ignore matchMedia errors
+  }
+}
+
 function applyPreferencesToDOM() {
+  bindSystemColorSchemeListener();
   const { iconMode, iconSize, wallpaper, wallpaperDimmed, tintHue, tintSat, nightMode } = state.prefs;
-  const isNight = Boolean(nightMode);
+  const hasExplicitNightPref = typeof nightMode === 'boolean';
+  const isNight = resolveEffectiveNightMode(state.prefs);
   document.body.setAttribute('data-icon-mode', iconMode);
   document.body.setAttribute('data-icon-size', iconSize);
   document.body.setAttribute('data-wallpaper', wallpaper);
   document.body.setAttribute('data-night-mode', isNight ? 'true' : 'false');
+  document.body.setAttribute('data-night-mode-source', hasExplicitNightPref ? 'explicit' : 'system');
   document.body.classList.toggle('night-mode', isNight);
   document.body.classList.toggle('wallpaper-dimmed', Boolean(wallpaperDimmed));
 
@@ -1167,6 +1415,19 @@ function applyPreferencesToDOM() {
   const dimBtn = document.getElementById('dimWallpaperBtn');
   if (dimBtn) dimBtn.classList.toggle('active', Boolean(wallpaperDimmed));
 
+  const followSystemBtn = document.getElementById('followSystemNightBtn');
+  if (followSystemBtn) {
+    const isAuto = !hasExplicitNightPref;
+    followSystemBtn.classList.toggle('active', isAuto);
+    followSystemBtn.setAttribute('aria-pressed', isAuto ? 'true' : 'false');
+    followSystemBtn.setAttribute(
+      'title',
+      isAuto
+        ? `当前跟随系统外观（${isNight ? '深色' : '浅色'}）`
+        : '点击恢复跟随系统浅色/深色外观'
+    );
+  }
+
   const hueRange = document.getElementById('tintHueRange');
   const satRange = document.getElementById('tintSatRange');
   if (hueRange) hueRange.value = tintHue;
@@ -1180,7 +1441,14 @@ function applyPreferencesToDOM() {
     focusBtn.classList.toggle('focus-active', isNight);
     focusBtn.classList.toggle('night-mode-active', isNight);
     focusBtn.setAttribute('aria-pressed', isNight ? 'true' : 'false');
-    focusBtn.setAttribute('title', isNight ? '关闭夜间模式' : '开启夜间模式');
+    focusBtn.setAttribute(
+      'title',
+      hasExplicitNightPref
+        ? isNight
+          ? '夜间模式已手动开启（点击切换为浅色）'
+          : '夜间模式已手动关闭（点击切换为夜间）'
+        : `当前跟随系统（${isNight ? '夜间' : '浅色'}），点击手动切换`
+    );
   }
   if (moonIcon && sunIcon) {
     moonIcon.toggleAttribute('hidden', isNight);
@@ -1306,6 +1574,28 @@ function measureActualAvailableGridHeight() {
   return fallbackAvailable > 0 ? fallbackAvailable : Math.max(1, usableViewportHeight);
 }
 
+function measureActualAvailableGridWidth() {
+  if (typeof document === 'undefined') return null;
+  const viewportEl = document.getElementById('springboardViewport');
+  if (!viewportEl || typeof viewportEl.getBoundingClientRect !== 'function') return null;
+  const viewportRect = viewportEl.getBoundingClientRect();
+  if (!viewportRect || viewportRect.width <= 0) return null;
+
+  let pageInlinePadding = 16;
+  const activePageEl =
+    document.querySelector('.springboard-page.page-active') ||
+    document.querySelector('.springboard-page');
+  if (activePageEl && typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+    const pageStyle = window.getComputedStyle(activePageEl);
+    const padLeft = parseFloat(pageStyle.paddingLeft) || 0;
+    const padRight = parseFloat(pageStyle.paddingRight) || 0;
+    pageInlinePadding = Math.max(0, Math.ceil(padLeft + padRight));
+  }
+
+  const usableWidth = Math.floor(viewportRect.width - pageInlinePadding);
+  return usableWidth > 0 ? usableWidth : null;
+}
+
 function applyDisplayModeClassesAndVars(metrics) {
   if (typeof document !== 'undefined' && document.body) {
     document.body.setAttribute('data-display-mode', metrics.effectiveMode);
@@ -1322,8 +1612,70 @@ function applyDisplayModeClassesAndVars(metrics) {
       rootStyle.setProperty('--grid-col-gap', `${metrics.colGap}px`);
       rootStyle.setProperty('--compact-icon-size', `${metrics.iconSize}px`);
       rootStyle.setProperty('--widget-min-height', `${metrics.widgetMinHeight}px`);
+      if (Number.isFinite(Number(metrics.trackMaxWidth)) && Number(metrics.trackMaxWidth) > 0) {
+        rootStyle.setProperty('--grid-max-track-width', `${metrics.trackMaxWidth}px`);
+      } else {
+        rootStyle.removeProperty('--grid-max-track-width');
+      }
     }
   }
+}
+
+/**
+ * Desktop only: aligns the first content edge of .status-left with the real grid's left edge.
+ * Uses the static (never transformed) #springboardViewport and .ios-status-bar rects plus the
+ * same track math as CSS (grid width = min(page content width, cols*track + gaps), centered),
+ * so drag/swipe transforms on pages cannot make it oscillate. Right controls/search are untouched.
+ */
+function syncStatusBarGridAlignment(metrics) {
+  if (typeof document === 'undefined') return;
+  const rootStyle = document.documentElement?.style;
+  if (!rootStyle) return;
+  const clear = () => {
+    rootStyle.removeProperty('--status-left-inset');
+    rootStyle.removeProperty('--status-right-inset');
+  };
+  if (!metrics || metrics.isMobile || typeof window?.getComputedStyle !== 'function') {
+    clear();
+    return;
+  }
+  const viewportEl = document.getElementById('springboardViewport');
+  const barEl = document.querySelector('.ios-status-bar');
+  if (!viewportEl || !barEl) {
+    clear();
+    return;
+  }
+  const viewportRect = viewportEl.getBoundingClientRect();
+  const barRect = barEl.getBoundingClientRect();
+  if (!(viewportRect.width > 0) || !(barRect.width > 0)) {
+    clear();
+    return;
+  }
+  let padLeft = 8;
+  let padRight = 8;
+  const pageEl =
+    document.querySelector('.springboard-page.page-active') ||
+    document.querySelector('.springboard-page');
+  if (pageEl) {
+    const pageStyle = window.getComputedStyle(pageEl);
+    padLeft = parseFloat(pageStyle.paddingLeft) || 0;
+    padRight = parseFloat(pageStyle.paddingRight) || 0;
+  }
+  const barPadLeft = parseFloat(window.getComputedStyle(barEl).paddingLeft) || 0;
+  const barPadRight = parseFloat(window.getComputedStyle(barEl).paddingRight) || 0;
+  const contentWidth = Math.max(0, viewportRect.width - padLeft - padRight);
+  const cols = Math.max(1, Number(metrics.columns) || 1);
+  const gap = Math.max(0, Number(metrics.colGap) || 0);
+  const track = Number(metrics.trackMaxWidth);
+  const naturalWidth =
+    Number.isFinite(track) && track > 0 ? cols * track + (cols - 1) * gap : contentWidth;
+  const gridWidth = Math.min(contentWidth, naturalWidth);
+  const gridLeft = viewportRect.left + padLeft + (contentWidth - gridWidth) / 2;
+  const gridRight = gridLeft + gridWidth;
+  const inset = Math.round(gridLeft - (barRect.left + barPadLeft));
+  const rightInset = Math.round(barRect.right - barPadRight - gridRight);
+  rootStyle.setProperty('--status-left-inset', `${Math.max(0, Math.min(320, inset))}px`);
+  rootStyle.setProperty('--status-right-inset', `${Math.max(0, Math.min(320, rightInset))}px`);
 }
 
 function syncDisplayModeAndMetricsToDOM() {
@@ -1337,21 +1689,24 @@ function syncDisplayModeAndMetricsToDOM() {
   // Apply body mode classes first so flex viewport & chrome settle at their target CSS sizes
   applyDisplayModeClassesAndVars(initialMetrics);
 
-  // Measure actual DOM available height for the grid and refine metrics if measured
+  // Measure actual DOM available height & width for the grid and refine metrics if measured
   const measuredAvailableGridHeight = measureActualAvailableGridHeight();
+  const measuredAvailableGridWidth = measureActualAvailableGridWidth();
   const metrics =
-    measuredAvailableGridHeight !== null
+    measuredAvailableGridHeight !== null || measuredAvailableGridWidth !== null
       ? computeSingleScreenMetrics({
           viewportWidth: width,
           viewportHeight: height,
           mobileDisplayMode: state.mobileDisplayMode,
           measuredAvailableGridHeight,
+          measuredAvailableGridWidth,
         })
       : initialMetrics;
 
   state.singleScreenMetrics = metrics;
   state.effectiveDisplayMode = metrics.effectiveMode;
   applyDisplayModeClassesAndVars(metrics);
+  syncStatusBarGridAlignment(metrics);
 
   document.querySelectorAll('[data-mobile-mode]').forEach((btn) => {
     const isActive = btn.dataset.mobileMode === state.mobileDisplayMode;
@@ -1476,7 +1831,7 @@ function openWidgetDetailModal(widgetEl, widgetItem) {
   closeMovePagePopover();
 
   const def = state.widgetRegistry.find((d) => d.type === widgetItem.type);
-  const title = def?.title || widgetItem.type || '小组件详情';
+  const title = getWidgetDisplayTitle(widgetItem, '小组件详情') || def?.title || '小组件详情';
   if (titleEl) {
     setText(titleEl, title);
   }
@@ -1493,8 +1848,17 @@ function openWidgetDetailModal(widgetEl, widgetItem) {
     resolveWidgetDisplaySize({ kind: 'widget', widget: widgetItem }, state.singleScreenMetrics);
   placeholderNode.setAttribute('data-widget-size', currentDisplaySize);
   const currentSpan = getWidgetGridSpan({ kind: 'widget', widget: widgetItem }, state.singleScreenMetrics);
-  placeholderNode.style.gridColumn = `span ${currentSpan.colSpan}`;
-  placeholderNode.style.gridRow = `span ${currentSpan.rowSpan}`;
+  const fixedColStart = widgetEl.style.gridColumnStart;
+  const fixedColEnd = widgetEl.style.gridColumnEnd;
+  const fixedRowStart = widgetEl.style.gridRowStart;
+  const fixedRowEnd = widgetEl.style.gridRowEnd;
+  if (widgetEl.dataset.fixedCell === 'true' && fixedColStart && fixedRowStart) {
+    placeholderNode.style.gridColumn = `${fixedColStart} / ${fixedColEnd || `span ${currentSpan.colSpan}`}`;
+    placeholderNode.style.gridRow = `${fixedRowStart} / ${fixedRowEnd || `span ${currentSpan.rowSpan}`}`;
+  } else {
+    placeholderNode.style.gridColumn = `span ${currentSpan.colSpan}`;
+    placeholderNode.style.gridRow = `span ${currentSpan.rowSpan}`;
+  }
   if (rect.height > 0) {
     placeholderNode.style.minHeight = `${Math.round(rect.height)}px`;
   }
@@ -1789,25 +2153,102 @@ function schedulePostRenderGridCalibration() {
     postRenderMeasureRafId = null;
     if (desktopPointerDragController?.isDragging?.()) return;
     if (isAnyModalOrDetailOpen()) return;
-    const measured = measureActualAvailableGridHeight();
-    if (measured === null) return;
-    const prevAvail = state.singleScreenMetrics?.availableGridHeight || 0;
+    const measuredHeight = measureActualAvailableGridHeight();
+    const measuredWidth = measureActualAvailableGridWidth();
+    if (measuredHeight === null && measuredWidth === null) return;
+    const prevAvailHeight = state.singleScreenMetrics?.availableGridHeight || 0;
+    const prevAvailWidth = state.singleScreenMetrics?.availableGridWidth || 0;
+    const prevCols = state.singleScreenMetrics?.columns || 0;
     const prevRows = state.singleScreenMetrics?.maxRows || 0;
     const prevRowHeight = state.singleScreenMetrics?.rowHeight || 0;
-    if (Math.abs(measured - prevAvail) < 2) return;
 
     const { width, height } = getViewportDimensions();
-    const nextMetrics = computeSingleScreenMetrics({
-      viewportWidth: width,
-      viewportHeight: height,
-      mobileDisplayMode: state.mobileDisplayMode,
-      measuredAvailableGridHeight: measured,
-    });
+    let chosenHeight = measuredHeight;
+    let chosenMetrics = null;
+
+    const activeView = state.screenViews[state.currentViewIndex];
+    const hasHomeOverflow =
+      activeView &&
+      activeView.pageId === 'all' &&
+      Array.isArray(activeView.overflowItems) &&
+      activeView.overflowItems.length > 0 &&
+      Array.isArray(activeView.allCategoryItems);
+
+    if (
+      measuredHeight !== null &&
+      hasHomeOverflow &&
+      typeof document !== 'undefined' &&
+      resolveEffectiveDisplayMode({
+        viewportWidth: width,
+        mobileDisplayMode: state.mobileDisplayMode,
+      }) === DISPLAY_MODES.COMPACT
+    ) {
+      const activePageEl =
+        document.querySelector('.springboard-page.page-active') ||
+        document.querySelector('.springboard-page');
+      const headerEl = activePageEl?.querySelector?.('.page-section-header');
+      const activeGridEl = activePageEl?.querySelector?.('.apps-grid.desktop-mixed-grid');
+      if (
+        headerEl &&
+        activeGridEl &&
+        typeof headerEl.getBoundingClientRect === 'function' &&
+        typeof activeGridEl.getBoundingClientRect === 'function'
+      ) {
+        const headerRect = headerEl.getBoundingClientRect();
+        const gridRect = activeGridEl.getBoundingClientRect();
+        const headerOffset = Math.floor(gridRect.top - headerRect.top);
+        if (headerRect.height > 0 && headerOffset > 0) {
+          const candidateHeight = measuredHeight + headerOffset;
+          const candidateMetrics = computeSingleScreenMetrics({
+            viewportWidth: width,
+            viewportHeight: height,
+            mobileDisplayMode: state.mobileDisplayMode,
+            measuredAvailableGridHeight: candidateHeight,
+            measuredAvailableGridWidth: measuredWidth,
+          });
+          const [candidateView] = packCategoryItemsIntoViews(activeView.allCategoryItems, {
+            pageId: activeView.pageId,
+            pageTitle: activeView.pageTitle,
+            metrics: candidateMetrics,
+          });
+          if (
+            candidateView &&
+            Array.isArray(candidateView.overflowItems) &&
+            candidateView.overflowItems.length === 0
+          ) {
+            chosenHeight = candidateHeight;
+            chosenMetrics = candidateMetrics;
+          }
+        }
+      }
+    }
+
+    const heightDiff = chosenHeight !== null ? Math.abs(chosenHeight - prevAvailHeight) : 0;
+    const widthDiff =
+      measuredWidth !== null && prevAvailWidth > 0 ? Math.abs(measuredWidth - prevAvailWidth) : 0;
+    if (!chosenMetrics && heightDiff < 2 && widthDiff < 2) return;
+
+    const nextMetrics =
+      chosenMetrics ||
+      computeSingleScreenMetrics({
+        viewportWidth: width,
+        viewportHeight: height,
+        mobileDisplayMode: state.mobileDisplayMode,
+        measuredAvailableGridHeight: chosenHeight,
+        measuredAvailableGridWidth: measuredWidth,
+      });
     state.singleScreenMetrics = nextMetrics;
     state.effectiveDisplayMode = nextMetrics.effectiveMode;
     applyDisplayModeClassesAndVars(nextMetrics);
 
-    if (nextMetrics.maxRows !== prevRows) {
+    const shouldRepackHomeWithoutOverflow =
+      Boolean(chosenMetrics) && hasHomeOverflow;
+
+    if (
+      shouldRepackHomeWithoutOverflow ||
+      nextMetrics.maxRows !== prevRows ||
+      nextMetrics.columns !== prevCols
+    ) {
       const currentCategoryPageId = state.pages[state.currentPageIndex]?.id || 'all';
       renderSpringBoardTrack({ preserveCategoryPageId: currentCategoryPageId });
       renderPaginationDots();
@@ -1870,6 +2311,269 @@ function closeMovePagePopover() {
     activeMovePagePopover.remove();
     activeMovePagePopover = null;
   }
+}
+
+function resolveDesktopDragSourceEntry({
+  desktop = getEffectiveDesktopForRender(),
+  fromPageId,
+  fromFolderId = null,
+  kind,
+  id,
+} = {}) {
+  if (kind !== 'site' && kind !== 'widget') return null;
+  if (fromPageId && !fromFolderId) {
+    const sourceItems = getRenderablePageItems({
+      desktop,
+      pageId: fromPageId,
+      sites: state.sites,
+      layout: state.widgetState.layout,
+    });
+    const found = sourceItems.find((entry) => entry.kind === kind && entry.id === id);
+    if (found) return found;
+  }
+  if (kind === 'site') {
+    const site = (Array.isArray(state.sites) ? state.sites : []).find(
+      (s) => s && String(s.id) === String(id)
+    );
+    if (site) {
+      return { kind: 'site', id: String(site.id), pageId: fromPageId || 'all', site };
+    }
+    if (fromFolderId) {
+      return {
+        kind: 'site',
+        id: String(id),
+        pageId: fromPageId || 'all',
+        site: { id: String(id), title: String(id), url: '' },
+      };
+    }
+    return null;
+  }
+  if (kind === 'widget') {
+    const widget = (Array.isArray(state.widgetState?.layout) ? state.widgetState.layout : []).find(
+      (w) => w && String(w.id) === String(id) && w.enabled !== false
+    );
+    return widget ? { kind: 'widget', id: String(widget.id), pageId: fromPageId || 'all', widget } : null;
+  }
+  return null;
+}
+
+function isPrimaryNavigationView({ viewId = null, pageId = null, gridEl = null } = {}) {
+  if (gridEl?.dataset?.folderId || gridEl?.classList?.contains?.('folder-detail-grid')) {
+    return false;
+  }
+  const pageEl = gridEl?.closest?.('.springboard-page');
+  if (pageEl && pageEl.dataset?.subViewIndex !== undefined) {
+    return Number(pageEl.dataset.subViewIndex) === 0;
+  }
+  if (viewId && Array.isArray(state.screenViews) && state.screenViews.length > 0) {
+    const matched = state.screenViews.find((v) => v.viewId === viewId);
+    if (matched) {
+      return Number(matched.subViewIndex || 0) === 0;
+    }
+  }
+  if (pageId && Array.isArray(state.screenViews) && state.screenViews.length > 0) {
+    const active = state.screenViews[state.currentViewIndex];
+    if (active && active.pageId === pageId) {
+      return Number(active.subViewIndex || 0) === 0;
+    }
+  }
+  return true;
+}
+
+function getDesktopCellDropSpan({
+  desktop = getEffectiveDesktopForRender(),
+  fromPageId,
+  fromFolderId = null,
+  kind,
+  id,
+  metrics = state.singleScreenMetrics,
+} = {}) {
+  const entry = resolveDesktopDragSourceEntry({ desktop, fromPageId, fromFolderId, kind, id });
+  if (!entry) return null;
+  const span = getWidgetGridSpan(entry, metrics);
+  const displaySize = kind === 'widget' ? resolveWidgetDisplaySize(entry, metrics) : null;
+  return {
+    entry,
+    colSpan: Math.max(1, Number(span?.colSpan) || 1),
+    rowSpan: Math.max(1, Number(span?.rowSpan) || 1),
+    displaySize,
+    metrics,
+  };
+}
+
+function computeDesktopCellDropPlan({
+  desktop = getEffectiveDesktopForRender(),
+  fromPageId,
+  fromFolderId = null,
+  toPageId,
+  kind,
+  id,
+  cell,
+  metrics = state.singleScreenMetrics,
+} = {}) {
+  if (!desktop || !toPageId || (kind !== 'site' && kind !== 'widget')) return null;
+  const entry = resolveDesktopDragSourceEntry({ desktop, fromPageId, fromFolderId, kind, id });
+  if (!entry) return null;
+
+  let planningDesktop = desktop;
+  if (fromFolderId && kind === 'site') {
+    planningDesktop = moveFolderSiteToPage(desktop, {
+      folderId: fromFolderId,
+      siteId: id,
+      toPageId,
+    });
+  } else if (fromPageId && fromPageId !== toPageId) {
+    planningDesktop = movePlacementToPage(desktop, {
+      fromPageId,
+      toPageId,
+      kind,
+      id,
+    });
+  }
+
+  const items = getRenderablePageItems({
+    desktop: planningDesktop,
+    pageId: toPageId,
+    sites: state.sites,
+    layout: state.widgetState.layout,
+  });
+  const rawPlacements = getPagePlacements(planningDesktop, toPageId);
+
+  return planDesktopCellDrop({
+    entry,
+    items,
+    rawPlacements,
+    metrics,
+    cell,
+  });
+}
+
+function commitDesktopCellDropFromDrag({
+  fromPageId,
+  fromFolderId = null,
+  toPageId,
+  kind,
+  id,
+  cell,
+} = {}) {
+  if (state.navigationImportInProgress) return false;
+  if (kind !== 'site' && kind !== 'widget') return false;
+  const authoritativeDesktop = getEffectiveDesktopForRender();
+  const targetPageId = toPageId || fromPageId;
+  if (!targetPageId) return false;
+
+  const entry = resolveDesktopDragSourceEntry({
+    desktop: authoritativeDesktop,
+    fromPageId,
+    fromFolderId,
+    kind,
+    id,
+  });
+  if (!entry) return false;
+
+  let baseDesktop = authoritativeDesktop;
+  let dropFromPageId = fromPageId || targetPageId;
+
+  if (fromFolderId && kind === 'site') {
+    closeFolderDetailModal({ restoreFocus: false, recalibrateAfterClose: false });
+    baseDesktop = moveFolderSiteToPage(authoritativeDesktop, {
+      folderId: fromFolderId,
+      siteId: id,
+      toPageId: targetPageId,
+    });
+    if (baseDesktop === authoritativeDesktop) {
+      return false;
+    }
+    dropFromPageId = targetPageId;
+  } else if (dropFromPageId !== targetPageId) {
+    baseDesktop = movePlacementToPage(authoritativeDesktop, {
+      fromPageId: dropFromPageId,
+      toPageId: targetPageId,
+      kind,
+      id,
+    });
+    if (baseDesktop === authoritativeDesktop) {
+      return false;
+    }
+    dropFromPageId = targetPageId;
+  }
+
+  const items = getRenderablePageItems({
+    desktop: baseDesktop,
+    pageId: targetPageId,
+    sites: state.sites,
+    layout: state.widgetState.layout,
+  });
+  const rawPlacements = getPagePlacements(baseDesktop, targetPageId);
+  const finalPlan = planDesktopCellDrop({
+    entry,
+    items,
+    rawPlacements,
+    metrics: state.singleScreenMetrics,
+    cell,
+  });
+  if (!finalPlan || !finalPlan.targetRect) {
+    return false;
+  }
+
+  const nextDesktop = applyDesktopCellDrop(baseDesktop, {
+    fromPageId: dropFromPageId,
+    toPageId: targetPageId,
+    kind,
+    id,
+    cell: { row: finalPlan.targetRect.row, column: finalPlan.targetRect.column },
+    moves: finalPlan.moves,
+  });
+
+  if (baseDesktop === authoritativeDesktop && nextDesktop === baseDesktop) {
+    return false;
+  }
+
+  // Verify the planned target cell actually took effect (never save a partial move if applyDesktopCellDrop rejected)
+  const finalTargetPlacements = getPagePlacements(nextDesktop, targetPageId);
+  const committedEntry = finalTargetPlacements.find((p) => p.kind === kind && p.id === id);
+  if (
+    !committedEntry?.cell ||
+    committedEntry.cell.row !== finalPlan.targetRect.row ||
+    committedEntry.cell.column !== finalPlan.targetRect.column
+  ) {
+    return false;
+  }
+
+  gestureBlockBlankExit = true;
+  commitDesktopAndLayout(nextDesktop, state.widgetState.layout);
+  return true;
+}
+
+function applyFixedCellStyleToCard(cardEl, fixedRect, { hasSavedCell = false } = {}) {
+  if (!cardEl || !cardEl.style) return;
+  if (fixedRect && Number.isInteger(fixedRect.row) && Number.isInteger(fixedRect.column)) {
+    const colStart = fixedRect.column + 1;
+    const rowStart = fixedRect.row + 1;
+    const colSpan = Math.max(1, Number(fixedRect.colSpan) || 1);
+    const rowSpan = Math.max(1, Number(fixedRect.rowSpan) || 1);
+    cardEl.style.gridColumn = `${colStart} / span ${colSpan}`;
+    cardEl.style.gridRow = `${rowStart} / span ${rowSpan}`;
+    cardEl.dataset.fixedCell = 'true';
+    cardEl.dataset.fixedRow = String(fixedRect.row);
+    cardEl.dataset.fixedColumn = String(fixedRect.column);
+  } else {
+    cardEl.style.removeProperty('grid-column');
+    cardEl.style.removeProperty('grid-row');
+    cardEl.style.removeProperty('grid-column-start');
+    cardEl.style.removeProperty('grid-column-end');
+    cardEl.style.removeProperty('grid-row-start');
+    cardEl.style.removeProperty('grid-row-end');
+    delete cardEl.dataset.fixedCell;
+    delete cardEl.dataset.fixedRow;
+    delete cardEl.dataset.fixedColumn;
+  }
+  if (hasSavedCell) {
+    cardEl.dataset.savedCell = 'true';
+  } else {
+    delete cardEl.dataset.savedCell;
+  }
+  cardEl.draggable = Boolean(state.jiggleMode);
 }
 
 function openMoveToPageMenu(anchorEl, { fromPageId, kind, id, title }) {
@@ -2084,6 +2788,9 @@ function ensureDesktopPointerDragController() {
     getCurrentPageId: () => state.pages[state.currentPageIndex]?.id || 'all',
     getCurrentViewId: () => state.screenViews[state.currentViewIndex]?.viewId || null,
     getPagePlacementsForPage: (pageId) => getPagePlacements(getEffectiveDesktopForRender(), pageId),
+    getCellDropSpan: getDesktopCellDropSpan,
+    planCellDrop: computeDesktopCellDropPlan,
+    onCommitCellDrop: commitDesktopCellDropFromDrag,
     onDragStart: ({ kind, id, fromPageId, fromFolderId = null }) => {
       clearActiveLongPress();
       closeMovePagePopover();
@@ -2308,7 +3015,7 @@ function bindDesktopCardDragAndLongPress(
     }
     if (
       e.target.closest(
-        '.delete-badge, .card-edit-actions, .card-edit-btn, .move-page-popover, input, textarea, select, [role="combobox"], .ui-select-wrap, .ui-datetime-field'
+        '.delete-badge, .card-edit-actions, .card-edit-btn, .move-page-popover, input, textarea, select, [role="combobox"], .ui-select-wrap, .ui-datetime-field, [data-widget-horizontal-scroll]'
       )
     ) {
       return;
@@ -2329,7 +3036,10 @@ function bindDesktopCardDragAndLongPress(
       }
       folderScrollController?.cancelScroll?.();
       setJiggleMode(true);
-      if (pid !== null && desktopPointerDragController?.startFromLongPress) {
+      if (
+        pid !== null &&
+        desktopPointerDragController?.startFromLongPress
+      ) {
         desktopPointerDragController.startFromLongPress({
           cardEl,
           pointerId: pid,
@@ -2395,6 +3105,7 @@ function bindDesktopCardDragAndLongPress(
   });
 
   cardEl.addEventListener('dragend', () => {
+    if (!state.jiggleMode) return;
     cardEl.classList.remove('dragging');
     clearPageTabHoverTimer();
     document.querySelectorAll('.drag-target-active, .drag-over-card').forEach((node) => {
@@ -2458,6 +3169,24 @@ function bindDesktopCardDragAndLongPress(
       commitDesktopAndLayout(nextDesktop, state.widgetState.layout);
       return;
     }
+    if (cardEl.dataset.fixedCell === 'true') {
+      const resolved = resolveViewDropBeforeAnchor({
+        views: state.screenViews,
+        targetViewId: cardEl.dataset.viewId || null,
+        targetPageId: currentPageId,
+        draggedKind: dragged.kind,
+        draggedId: dragged.id,
+      });
+      commitDesktopItemBefore({
+        fromPageId: dragged.fromPageId || currentPageId,
+        toPageId: resolved.toPageId,
+        kind: dragged.kind,
+        id: dragged.id,
+        beforeKind: resolved.beforeKind,
+        beforeId: resolved.beforeId,
+      });
+      return;
+    }
     handleDropOnDesktopCard({
       fromPageId: dragged.fromPageId || currentPageId,
       toPageId: currentPageId,
@@ -2508,13 +3237,43 @@ function bindDesktopCardDragAndLongPress(
   });
 }
 
+function setSiteTileSize(siteId, nextSize) {
+  if (!siteId || state.navigationImportInProgress) return false;
+  const normalized = nextSize === 'square' ? 'square' : 'single';
+  const idx = state.sites.findIndex((s) => s && s.id === siteId);
+  if (idx === -1) return false;
+  const current = state.sites[idx].size === 'square' ? 'square' : 'single';
+  if (current === normalized) return true;
+  const nextSite = { ...state.sites[idx] };
+  if (normalized === 'square') {
+    nextSite.size = 'square';
+  } else {
+    delete nextSite.size;
+  }
+  state.sites = state.sites.map((s, i) => (i === idx ? nextSite : s));
+  saveSitesToStorage();
+  renderAll();
+  return true;
+}
+
 function createAppItemElement(
   site,
   idx,
-  { pageId = null, viewId = null, folderId = null, itemIndex = idx, totalItems = 1 } = {}
+  {
+    pageId = null,
+    viewId = null,
+    folderId = null,
+    itemIndex = idx,
+    totalItems = 1,
+    allowSizing = false,
+    fixedRect = null,
+    savedCell = null,
+  } = {}
 ) {
   const effectivePageId = pageId || state.pages[state.currentPageIndex]?.id || 'all';
   const validHref = safeHttpUrl(site.url);
+  // Only page-grid tiles (not Dock, folders, search, or overflow list) render the optional 2×2 size
+  const pageTileSize = allowSizing && !folderId && site.size === 'square' ? 'square' : 'single';
   const item = el('a', {
     className: `app-item ${site.isUnresolvedPlaceholder ? 'app-item-unresolved' : ''}`,
     href: validHref || '#',
@@ -2527,6 +3286,7 @@ function createAppItemElement(
       pageId: effectivePageId,
       ...(viewId ? { viewId } : {}),
       ...(folderId ? { folderId } : {}),
+      ...(allowSizing && !folderId ? { siteSize: pageTileSize } : {}),
     },
   });
 
@@ -2549,6 +3309,46 @@ function createAppItemElement(
   const labelSpan = el('span', { className: 'app-label', textContent: site.title });
 
   item.append(delBtn, squircle, labelSpan);
+
+  if (allowSizing && !folderId && !site.isUnresolvedPlaceholder) {
+    const nextSize = pageTileSize === 'square' ? 'single' : 'square';
+    const currentLabel = pageTileSize === 'square' ? '2×2' : '1×1';
+    const nextLabel = nextSize === 'square' ? '2×2' : '1×1';
+    const sizeToggle = el('button', {
+      type: 'button',
+      className: 'card-edit-btn site-size-toggle',
+      disabled: !state.jiggleMode,
+      'aria-pressed': pageTileSize === 'square' ? 'true' : 'false',
+      'aria-label': `${site.title} 尺寸：当前 ${currentLabel}，切换为 ${nextLabel}`,
+      title: `${site.title} · 当前 ${currentLabel}，点击切换为 ${nextLabel}`,
+      dataset: { siteSizeCurrent: pageTileSize, siteSizeNext: nextSize },
+      textContent: currentLabel,
+    });
+    sizeToggle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      clearActiveLongPress();
+      gestureBlockBlankExit = true;
+    });
+    const applyToggle = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.jiggleMode) return;
+      gestureBlockBlankExit = true;
+      setSiteTileSize(site.id, nextSize);
+    };
+    sizeToggle.addEventListener('click', applyToggle);
+    sizeToggle.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' || e.key === ' ') applyToggle(e);
+    });
+
+    item.appendChild(sizeToggle);
+
+    const hasSavedCell = Boolean(
+      savedCell && Number.isInteger(savedCell.row) && Number.isInteger(savedCell.column)
+    );
+    applyFixedCellStyleToCard(item, fixedRect, { hasSavedCell });
+  }
 
   item.addEventListener('click', (e) => {
     if (state.jiggleMode || !validHref) {
@@ -2811,19 +3611,45 @@ function syncWidgetSummaryScrollRegions(root) {
   });
 }
 
+let singleSizeSelectWatcherBound = false;
+// Close any open 1×1 size picker portal and disable triggers when edit (jiggle) mode exits.
+function ensureSingleSizeSelectEditExitWatcher() {
+  if (singleSizeSelectWatcherBound || typeof MutationObserver !== 'function' || !document.body) return;
+  singleSizeSelectWatcherBound = true;
+  let wasJiggle = document.body.classList.contains('jiggle-mode');
+  new MutationObserver(() => {
+    const isJiggle = document.body.classList.contains('jiggle-mode');
+    if (isJiggle === wasJiggle) return;
+    wasJiggle = isJiggle;
+    document.querySelectorAll('.widget-size-select-trigger').forEach((btn) => {
+      btn.disabled = !isJiggle;
+    });
+    if (!isJiggle) {
+      const hadFocusInPicker = document.activeElement?.closest?.('.widget-size-select, .ui-select-popover');
+      closeAllPopovers();
+      if (hadFocusInPicker) {
+        hadFocusInPicker.closest?.('.ios-widget')?.focus?.({ preventScroll: true });
+      }
+    }
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+}
+
 function decorateWidgetCardForDesktop(
   root,
   widgetItem,
-  { pageId, viewId = null, entry = null, itemIndex = 0, totalItems = 1 }
+  { pageId, viewId = null, entry = null, fixedRect = null, itemIndex = 0, totalItems = 1 }
 ) {
   const def = state.widgetRegistry.find((d) => d.type === widgetItem.type);
-  const title = def?.title || widgetItem.type;
+  const title = getWidgetDisplayTitle(widgetItem);
   const supportedSizes = getSupportedSizesForWidgetType(widgetItem.type, state.widgetRegistry);
   const selectedSize = normalizeWidgetSize(widgetItem.size, widgetItem.type, state.widgetRegistry);
   const entryForMeasure =
     entry && entry.kind === 'widget' && entry.widget ? entry : { kind: 'widget', widget: widgetItem };
   const resolvedDisplaySize = resolveWidgetDisplaySize(entryForMeasure, state.singleScreenMetrics);
   const resolvedSpan = getWidgetGridSpan(entryForMeasure, state.singleScreenMetrics);
+  const hasSavedCell = Boolean(
+    entry?.cell && Number.isInteger(entry.cell.row) && Number.isInteger(entry.cell.column)
+  );
 
   root._latestWidgetItem = widgetItem;
   root._latestWidgetEntry = entryForMeasure;
@@ -2833,6 +3659,7 @@ function decorateWidgetCardForDesktop(
   root.dataset.widgetSelectedSize = selectedSize;
   root.dataset.colSpan = String(resolvedSpan.colSpan);
   root.dataset.rowSpan = String(resolvedSpan.rowSpan);
+  applyFixedCellStyleToCard(root, fixedRect, { hasSavedCell });
 
   const randomDelay = ((itemIndex % 5) * -0.05).toFixed(3);
   root.style.setProperty('--jiggle-delay', `${randomDelay}s`);
@@ -2842,6 +3669,14 @@ function decorateWidgetCardForDesktop(
 
   const existingDel = root.querySelector(':scope > .delete-badge');
   if (existingDel) existingDel.remove();
+  if (root._sizeSelect) {
+    try {
+      root._sizeSelect.destroy();
+    } catch {
+      // Ignore stale picker teardown errors
+    }
+    root._sizeSelect = null;
+  }
   const existingBar = root.querySelector(':scope > .card-edit-actions');
   if (existingBar) existingBar.remove();
 
@@ -2872,7 +3707,7 @@ function decorateWidgetCardForDesktop(
     },
   });
 
-  for (const opt of WIDGET_SIZE_OPTIONS) {
+  for (const opt of resolvedDisplaySize === 'single' ? [] : WIDGET_SIZE_OPTIONS) {
     if (!supportedSizes.includes(opt.value)) continue;
     const isSelected = selectedSize === opt.value;
     const sizeBtn = el(
@@ -2923,28 +3758,75 @@ function decorateWidgetCardForDesktop(
     sizeControls.appendChild(sizeBtn);
   }
 
-  const editActionsBar = el(
-    'div',
-    {
-      className: 'card-edit-actions widget-card-edit-actions',
-      role: 'toolbar',
-      'aria-label': `${title} 编辑操作`,
-    },
-    sizeControls
-  );
+  // 1×1 cards (~43–50px) cannot fit a row of size chips: use a compact anchored-portal select instead.
+  if (resolvedDisplaySize === 'single') {
+    const sizeOptions = WIDGET_SIZE_OPTIONS.filter((opt) => supportedSizes.includes(opt.value)).map(
+      (opt) => ({ value: opt.value, label: `${opt.shortLabel} ${opt.label}` })
+    );
+    const sizeSelect = createSelect({
+      options: sizeOptions,
+      value: selectedSize,
+      compact: true,
+      ariaLabel: `${title} 尺寸选择`,
+      onChange: (nextSize) => {
+        const latest = root._latestWidgetItem || widgetItem;
+        const currentSaved = normalizeWidgetSize(latest.size, latest.type, state.widgetRegistry);
+        if (!state.jiggleMode) {
+          sizeSelect.setValue(currentSaved);
+          return;
+        }
+        gestureBlockBlankExit = true;
+        if (!setWidgetSize(latest.id, nextSize)) {
+          sizeSelect.setValue(currentSaved);
+        }
+      },
+    });
+    sizeSelect.root.classList.add('widget-size-select');
+    sizeSelect.triggerBtn.classList.add('widget-size-select-trigger');
+    sizeSelect.triggerBtn.disabled = !state.jiggleMode;
+    sizeSelect.triggerBtn.title = `${title} · 尺寸`;
+    // Never open outside edit mode (covers stale enabled state between renders)
+    sizeSelect.root.addEventListener(
+      'click',
+      (e) => {
+        if (!state.jiggleMode) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      true
+    );
+    sizeControls.appendChild(sizeSelect.root);
+    root._sizeSelect = sizeSelect;
+    ensureSingleSizeSelectEditExitWatcher();
+  }
 
-  editActionsBar.addEventListener('pointerdown', (e) => {
-    e.stopPropagation();
-    clearActiveLongPress();
-    gestureBlockBlankExit = true;
-  });
+  if (sizeControls.childElementCount > 0) {
+    const editActionsBar = el(
+      'div',
+      {
+        className: 'card-edit-actions widget-card-edit-actions',
+        role: 'toolbar',
+        'aria-label': `${title} 编辑操作`,
+      },
+      sizeControls
+    );
 
-  editActionsBar.addEventListener('click', (e) => {
-    e.stopPropagation();
-    gestureBlockBlankExit = true;
-  });
+    editActionsBar.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      clearActiveLongPress();
+      gestureBlockBlankExit = true;
+    });
 
-  root.prepend(delBtn, editActionsBar);
+    editActionsBar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      gestureBlockBlankExit = true;
+    });
+
+    root.prepend(delBtn, editActionsBar);
+  } else {
+    root.prepend(delBtn);
+  }
   syncWidgetSummaryScrollRegions(root);
 
   // Shield internal widget forms/links/buttons from interfering when in edit mode,
@@ -2959,7 +3841,7 @@ function decorateWidgetCardForDesktop(
       'pointerdown',
       (e) => {
         if (state.jiggleMode) return;
-        const scrollZone = e.target.closest?.('.widget-summary-scroll');
+        const scrollZone = e.target.closest?.('.widget-summary-scroll, [data-widget-horizontal-scroll]');
         if (!scrollZone) {
           scrollPointerStart = null;
           scrollMoved = false;
@@ -3001,7 +3883,11 @@ function decorateWidgetCardForDesktop(
     root.addEventListener(
       'scroll',
       (e) => {
-        if (e.target && e.target.classList?.contains('widget-summary-scroll')) {
+        if (
+          e.target &&
+          (e.target.classList?.contains('widget-summary-scroll') ||
+            e.target.hasAttribute?.('data-widget-horizontal-scroll'))
+        ) {
           scrollMoved = true;
           suppressDetailOpenUntil = performance.now() + 360;
           clearActiveLongPress();
@@ -3043,7 +3929,7 @@ function decorateWidgetCardForDesktop(
         e.stopPropagation();
         return;
       }
-      if (e.target.closest('.widget-summary-scroll')) {
+      if (e.target.closest('.widget-summary-scroll, [data-widget-horizontal-scroll]')) {
         e.stopPropagation();
         return;
       }
@@ -3239,9 +4125,17 @@ function renderSpringBoardTrack({ preserveCategoryPageId = null } = {}) {
       );
       grid.appendChild(emptyDropzone);
     } else {
+      const viewFixedCells =
+        view.fixedCells instanceof Map
+          ? view.fixedCells
+          : view.subViewIndex === 0 && typeof getFixedCellsForPage === 'function'
+            ? getFixedCellsForPage(view.items, state.singleScreenMetrics)
+            : new Map();
       view.items.forEach((entry, idx) => {
         const categoryItemIndex = view.allCategoryItems.indexOf(entry);
         const effectiveIdx = categoryItemIndex !== -1 ? categoryItemIndex : idx;
+        const fixedKey = `${entry.kind}:${entry.id}`;
+        const fixedRect = viewFixedCells instanceof Map ? viewFixedCells.get(fixedKey) || null : null;
         if (entry.kind === 'site') {
           grid.appendChild(
             createAppItemElement(entry.site, effectiveIdx, {
@@ -3249,6 +4143,9 @@ function renderSpringBoardTrack({ preserveCategoryPageId = null } = {}) {
               viewId: view.viewId,
               itemIndex: effectiveIdx,
               totalItems: totalCategoryItems,
+              allowSizing: true,
+              fixedRect,
+              savedCell: entry.cell || null,
             })
           );
         } else if (entry.kind === 'folder') {
@@ -3269,6 +4166,7 @@ function renderSpringBoardTrack({ preserveCategoryPageId = null } = {}) {
                 pageId: page.id,
                 viewId: view.viewId,
                 entry,
+                fixedRect,
                 itemIndex: effectiveIdx,
                 totalItems: totalCategoryItems,
               });
@@ -3663,7 +4561,7 @@ function initSwipePageTurnGestures() {
     // Exclude interactive form inputs, popovers, pagination dots, and card edit buttons.
     if (
       e.target.closest(
-        'input, textarea, select, label, .ui-popover-portal, .ui-select-wrap, .ui-datetime-field, .ui-switch-wrap, .ui-checkbox-wrap, .delete-badge, .card-edit-actions, .widget-summary-scroll, .springboard-pagination-wrap, .page-overflow-view-all-btn'
+        'input, textarea, select, label, .ui-popover-portal, .ui-select-wrap, .ui-datetime-field, .ui-switch-wrap, .ui-checkbox-wrap, .delete-badge, .card-edit-actions, .widget-summary-scroll, [data-widget-horizontal-scroll], .springboard-pagination-wrap, .page-overflow-view-all-btn'
       )
     ) {
       return;
@@ -3778,7 +4676,7 @@ function initSwipePageTurnGestures() {
         target &&
         typeof target.closest === 'function' &&
         target.closest(
-          '.ios-status-bar, .spotlight-section, .springboard-pagination-wrap, .ios-dock-container, .customize-sheet, .modal-backdrop, .haptic-context-menu, .move-page-popover, .ui-popover-portal, input, textarea, select, button, a, label'
+          '.ios-status-bar, .spotlight-section, .springboard-pagination-wrap, .ios-dock-container, .customize-sheet, .modal-backdrop, .haptic-context-menu, .move-page-popover, .ui-popover-portal, [data-widget-horizontal-scroll], input, textarea, select, button, a, label'
         )
       ) {
         return;
@@ -3873,7 +4771,7 @@ function initSwipePageTurnGestures() {
     'wheel',
     (e) => {
       if (wheelCooldown) return;
-      if (e.target.closest('.widgets-bento, .widget-summary-scroll')) return;
+      if (e.target.closest('.widgets-bento, .widget-summary-scroll, [data-widget-horizontal-scroll]')) return;
       if (Math.abs(e.deltaX) > 32 && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.35) {
         wheelCooldown = true;
         if (e.deltaX > 0) {
@@ -3894,6 +4792,7 @@ function initSwipePageTurnGestures() {
 // Render Dock & Pagination Dots (Strictly XSS-Safe DOM Construction)
 // ==========================================================================
 let dockOverflowController = null;
+let disposeDockMagnification = null;
 
 function renderDock() {
   const dock = document.getElementById('iosDock');
@@ -3906,6 +4805,7 @@ function renderDock() {
 
   dockOverflowController?.destroy?.();
   dockOverflowController = null;
+  disposeDockMagnification?.();
 
   const pinnedSites = (Array.isArray(state.sites) ? state.sites : []).filter(
     (s) => s && s.pinned
@@ -3962,22 +4862,28 @@ function renderDock() {
     'aria-label': '程序坞快捷操作',
   });
 
-  const addPageDockBtn = el('button', {
+  const addSiteDockBtn = el('button', {
     type: 'button',
     className: 'dock-item dock-action-btn',
-    'aria-label': '新建导航页',
+    'aria-label': '添加网页',
   });
-  addPageDockBtn.style.background = 'transparent';
-  addPageDockBtn.style.border = 'none';
-  const addPageSq = el('div', { className: 'app-squircle' });
-  addPageSq.style.setProperty('--app-gradient', 'linear-gradient(145deg, #0a84ff 0%, #30d158 100%)');
-  addPageSq.style.setProperty('--app-accent', '#30d158');
-  const addPageGlyph = el('div', { className: 'app-glyph' });
-  addPageGlyph.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg>`;
-  addPageSq.appendChild(addPageGlyph);
-  addPageDockBtn.append(el('span', { className: 'dock-tooltip', textContent: '新建导航页' }), addPageSq);
-  addPageDockBtn.addEventListener('click', () => openAddPageModal());
-  fixedActions.appendChild(addPageDockBtn);
+  addSiteDockBtn.style.background = 'transparent';
+  addSiteDockBtn.style.border = 'none';
+  const addSiteSq = el('div', { className: 'app-squircle' });
+  addSiteSq.style.setProperty('--app-gradient', 'linear-gradient(145deg, #0a84ff 0%, #30d158 100%)');
+  addSiteSq.style.setProperty('--app-accent', '#30d158');
+  const addSiteGlyph = el('div', { className: 'app-glyph' });
+  addSiteGlyph.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg>`;
+  addSiteSq.appendChild(addSiteGlyph);
+  addSiteDockBtn.append(el('span', { className: 'dock-tooltip', textContent: '添加网页' }), addSiteSq);
+  addSiteDockBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    gestureBlockBlankExit = true;
+    const currentPage = state.pages[state.currentPageIndex];
+    const defaultPageId = currentPage ? currentPage.id : 'all';
+    openAddSiteModalForPage(defaultPageId, 'site');
+  });
+  fixedActions.appendChild(addSiteDockBtn);
 
   const customLauncher = el('button', {
     type: 'button',
@@ -4008,6 +4914,8 @@ function renderDock() {
     dock.classList.remove('is-overflowing', 'can-scroll-left', 'can-scroll-right', 'is-dock-dragging');
     dock.dataset.dockOverflow = 'false';
   }
+
+  disposeDockMagnification = createDockMagnification(dock);
 }
 
 function renderPaginationDots() {
@@ -4121,10 +5029,122 @@ function initStatusBarClock() {
   const focusToggle = document.getElementById('focusModeToggle');
   if (focusToggle) {
     focusToggle.addEventListener('click', () => {
-      state.prefs.nightMode = !Boolean(state.prefs.nightMode);
+      const effectiveNight = resolveEffectiveNightMode(state.prefs);
+      state.prefs.nightMode = !effectiveNight;
       savePrefsToStorage();
       applyPreferencesToDOM();
     });
+  }
+}
+
+const BROWSER_GEO_OPTIONS = Object.freeze({
+  enableHighAccuracy: false,
+  timeout: 6000,
+  maximumAge: 300000,
+});
+
+function isBrowserGeolocationSupportedInContext() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const host = typeof location !== 'undefined' ? location.hostname : '';
+  const isSecure = Boolean(window.isSecureContext || host === 'localhost' || host === '127.0.0.1');
+  return Boolean(isSecure && navigator.geolocation && typeof navigator.geolocation.getCurrentPosition === 'function');
+}
+
+function hasValidBrowserCoordinates(coords = state.browserCoordinates) {
+  return Boolean(
+    coords &&
+      typeof coords === 'object' &&
+      typeof coords.latitude === 'number' &&
+      Number.isFinite(coords.latitude) &&
+      typeof coords.longitude === 'number' &&
+      Number.isFinite(coords.longitude)
+  );
+}
+
+function readBrowserCoordinates(options = BROWSER_GEO_OPTIONS) {
+  return new Promise((resolve, reject) => {
+    if (!isBrowserGeolocationSupportedInContext()) {
+      reject(new Error('当前上下文不支持浏览器精确定位'));
+      return;
+    }
+    const timeoutMs = Math.max(1000, Number(options?.timeout) || 6000);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('读取浏览器位置超时'));
+    }, timeoutMs + 250);
+    timer?.unref?.();
+
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          const lat = Number(pos?.coords?.latitude);
+          const lon = Number(pos?.coords?.longitude);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            reject(new Error('浏览器返回的位置坐标无效'));
+            return;
+          }
+          resolve({
+            latitude: Number(lat.toFixed(4)),
+            longitude: Number(lon.toFixed(4)),
+          });
+        },
+        (err) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(err || new Error('未获得浏览器定位授权或定位失败'));
+        },
+        options
+      );
+    } catch (err) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err || new Error('调用浏览器定位接口失败'));
+    }
+  });
+}
+
+async function maybeHydrateGrantedBrowserCoordinatesForMode(activeMode) {
+  if (activeMode !== 'auto' && activeMode !== 'browser') {
+    return null;
+  }
+  if (hasValidBrowserCoordinates(state.browserCoordinates)) {
+    return state.browserCoordinates;
+  }
+  if (!isBrowserGeolocationSupportedInContext()) {
+    return null;
+  }
+  if (!navigator.permissions || typeof navigator.permissions.query !== 'function') {
+    return null;
+  }
+  try {
+    const status = await navigator.permissions.query({ name: 'geolocation' });
+    if (!status || status.state !== 'granted') {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  const currentModeBeforeRead = state.deviceSettings?.location?.mode || 'auto';
+  if (currentModeBeforeRead !== 'auto' && currentModeBeforeRead !== 'browser') {
+    return null;
+  }
+  try {
+    const coords = await readBrowserCoordinates(BROWSER_GEO_OPTIONS);
+    const currentModeAfterRead = state.deviceSettings?.location?.mode || 'auto';
+    if (currentModeAfterRead === 'auto' || currentModeAfterRead === 'browser') {
+      state.browserCoordinates = coords;
+      return coords;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -4143,9 +5163,24 @@ async function refreshEnvironmentAndWeather(forceWeather = false) {
   widgetHost.updateAll({ environment: structuredClone(state.environment) });
 
   try {
+    const initialMode = state.deviceSettings?.location?.mode || 'auto';
+    if (
+      (initialMode === 'auto' || initialMode === 'browser') &&
+      !hasValidBrowserCoordinates(state.browserCoordinates)
+    ) {
+      await maybeHydrateGrantedBrowserCoordinatesForMode(initialMode);
+    }
+
+    const effectiveMode = state.deviceSettings?.location?.mode || 'auto';
+    const coordsForResolve =
+      (effectiveMode === 'auto' || effectiveMode === 'browser') &&
+      hasValidBrowserCoordinates(state.browserCoordinates)
+        ? state.browserCoordinates
+        : undefined;
+
     const resolved = await featureClient.resolveEnvironment({
       browserTimeZone,
-      coordinates: state.browserCoordinates || undefined,
+      coordinates: coordsForResolve,
     });
 
     if (resolved?.clock) {
@@ -4194,8 +5229,6 @@ function initSpotlightAndEngines() {
   const submitBtn = document.getElementById('spotlightSubmitBtn');
   const engineBtn = document.getElementById('engineSelectorBtn');
   const popover = document.getElementById('enginePopover');
-  const island = document.getElementById('dynamicIsland');
-  const islandSettingsBtn = document.getElementById('openSettingsFromIslandBtn');
 
   const googleIdx = Math.max(
     0,
@@ -4301,20 +5334,6 @@ function initSpotlightAndEngines() {
 
   if (submitBtn) {
     submitBtn.addEventListener('click', () => triggerExternalSearch());
-  }
-
-  if (islandSettingsBtn) {
-    islandSettingsBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openApiConfigModal('location');
-    });
-  }
-
-  if (island) {
-    island.addEventListener('click', (e) => {
-      if (e.target.closest('button')) return;
-      input?.focus();
-    });
   }
 
   document.addEventListener('keydown', (e) => {
@@ -4613,6 +5632,15 @@ const navigationBackupController = createNavigationBackupController({
   setEditLock: setNavigationImportEditLock,
 });
 
+const notificationsUIController = createNotificationsUIController({
+  openSettingsModalForNotifications: () => {
+    openApiConfigModal('notifications');
+  },
+  getFallbackFocusElement: () =>
+    document.getElementById('openSettingsModalBtn') ||
+    document.getElementById('spotlightInput'),
+});
+
 function initCustomizeSheet() {
   const openBtn = document.getElementById('openCustomizeBtn');
   const closeBtn = document.getElementById('closeCustomizeBtn');
@@ -4621,6 +5649,7 @@ function initCustomizeSheet() {
   const hueRange = document.getElementById('tintHueRange');
   const satRange = document.getElementById('tintSatRange');
   const dimBtn = document.getElementById('dimWallpaperBtn');
+  const followSystemBtn = document.getElementById('followSystemNightBtn');
 
   localWallpaperController.bindDOMEvents();
   localWallpaperController.restoreFromStorage();
@@ -4676,6 +5705,14 @@ function initCustomizeSheet() {
     });
   }
 
+  if (followSystemBtn) {
+    followSystemBtn.addEventListener('click', () => {
+      delete state.prefs.nightMode;
+      savePrefsToStorage();
+      applyPreferencesToDOM();
+    });
+  }
+
   document.querySelectorAll('.swatch-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const nextWp = btn.dataset.wp;
@@ -4708,7 +5745,6 @@ function initCustomizeSheet() {
         tintHue: 215,
         tintSat: 82,
         focusActive: false,
-        nightMode: false,
       };
       const defaultWidgetState = createDefaultWidgetState();
       const migrated = buildInitialDesktopLayout({
@@ -4743,18 +5779,36 @@ function toggleCustomizeSheet(forceState) {
 // ==========================================================================
 // Unified Settings Modal: Location/Weather, Clock/TimeZone & Sync
 // ==========================================================================
+const SETTINGS_TABS = new Set(['location', 'clock', 'notifications', 'api', 'update', 'sync']);
+
 function switchSettingsTab(tabName) {
   closeAllPopovers();
-  const normalizedTab = !tabName || tabName === 'widgets' ? 'location' : tabName;
+  const aliasTab = tabName === 'widgets' ? 'location' : tabName === 'sources' ? 'api' : tabName;
+  const normalizedTab = SETTINGS_TABS.has(aliasTab) ? aliasTab : 'location';
+  const previousTab = state.activeSettingsTab;
   state.activeSettingsTab = normalizedTab;
+  if (previousTab === 'update' && normalizedTab !== 'update') {
+    updateUIController?.onHidden?.();
+  }
   document.querySelectorAll('#apiConfigModal .settings-tab-btn').forEach((btn) => {
     const active = btn.dataset.tab === normalizedTab;
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', String(active));
+    btn.setAttribute('tabindex', active ? '0' : '-1');
+    if (active && typeof btn.scrollIntoView === 'function') {
+      try {
+        btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch {
+        // Ignore scroll errors in old engines
+      }
+    }
   });
   document.querySelectorAll('#apiConfigModal .settings-tab-panel').forEach((panel) => {
     panel.hidden = panel.dataset.panel !== normalizedTab;
   });
+  if (normalizedTab === 'update') {
+    getUpdateUIController().onShown();
+  }
 }
 
 function syncSettingsControlsFromState() {
@@ -4907,7 +5961,8 @@ function initSettingsModalControls() {
   });
 
   const requestGeoBtn = document.getElementById('requestBrowserGeoBtn');
-  requestGeoBtn?.addEventListener('click', () => {
+  requestGeoBtn?.addEventListener('click', async () => {
+    if (requestGeoBtn.disabled) return;
     const locStatus = document.getElementById('locationStatusText');
     if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
       setText(locStatus, '当前通过局域网 HTTP 访问，浏览器安全策略限制精确定位；请使用 IP 近似位置或在上方搜索手动城市。');
@@ -4917,36 +5972,82 @@ function initSettingsModalControls() {
       setText(locStatus, '当前浏览器不支持定位接口，请使用 IP 近似位置或手动选择城市。');
       return;
     }
-    setText(locStatus, '正在请求浏览器定位授权…');
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        state.browserCoordinates = {
-          latitude: Number(pos.coords.latitude.toFixed(4)),
-          longitude: Number(pos.coords.longitude.toFixed(4)),
-        };
-        const targetMode = locModeSelect?.value === 'browser' ? 'browser' : 'auto';
-        if (locModeSelect) {
-          locModeSelect.value = targetMode;
-          uiSelectControls.get('locationModeSelect')?.refresh();
-        }
+
+    requestGeoBtn.disabled = true;
+    try {
+      setText(locStatus, '正在请求浏览器定位授权…');
+
+      let weatherPermGranted = true;
+      const requestWeatherFn = window.LaunchDeckLocation?.requestWeather;
+      if (typeof requestWeatherFn === 'function') {
         try {
-          state.deviceSettings = await featureClient.saveDeviceSettings({
-            location: {
-              mode: targetMode,
-              manual: state.deviceSettings.location?.manual || null,
-            },
-          });
+          const weatherPermPromise = requestWeatherFn.call(window.LaunchDeckLocation);
+          weatherPermGranted = Boolean(await weatherPermPromise);
         } catch {
-          // Continue resolving with in-memory coordinates
+          weatherPermGranted = false;
         }
-        await refreshEnvironmentAndWeather(true);
-      },
-      () => {
+      }
+
+      let coords = null;
+      try {
+        coords = await readBrowserCoordinates(BROWSER_GEO_OPTIONS);
+      } catch {
         state.browserCoordinates = null;
-        setText(locStatus, '未获得浏览器定位授权；已保留现有设置，您可改用 IP 近似定位或手动选择城市。');
-      },
-      { enableHighAccuracy: false, timeout: 6000, maximumAge: 300000 }
-    );
+        const currentMode = locModeSelect?.value || state.deviceSettings?.location?.mode || 'auto';
+        if (currentMode === 'auto') {
+          await refreshEnvironmentAndWeather(true);
+          if (!state.environment.location) {
+            setText(
+              locStatus,
+              weatherPermGranted
+                ? '未获得浏览器定位授权；已保留现有设置，您可改用 IP 近似定位或手动选择城市。'
+                : '未获得浏览器定位与实况天气访问授权；已保留现有设置，您可改用 IP 近似定位或手动选择城市。'
+            );
+          }
+        } else {
+          setText(
+            locStatus,
+            weatherPermGranted
+              ? '未获得浏览器定位授权；已保留现有设置，您可改用 IP 近似定位或手动选择城市。'
+              : '未获得浏览器定位与实况天气访问授权；已保留现有设置，您可改用 IP 近似定位或手动选择城市。'
+          );
+        }
+        return;
+      }
+
+      state.browserCoordinates = coords;
+      const currentSelectedMode = locModeSelect?.value || state.deviceSettings?.location?.mode || 'auto';
+      const targetMode =
+        currentSelectedMode === 'browser' || currentSelectedMode === 'auto'
+          ? currentSelectedMode
+          : 'auto';
+      if (locModeSelect && locModeSelect.value !== targetMode) {
+        locModeSelect.value = targetMode;
+        uiSelectControls.get('locationModeSelect')?.refresh();
+      }
+      try {
+        state.deviceSettings = await featureClient.saveDeviceSettings({
+          location: {
+            mode: targetMode,
+            manual: state.deviceSettings.location?.manual || null,
+          },
+        });
+      } catch {
+        // Continue resolving with in-memory coordinates
+      }
+      await refreshEnvironmentAndWeather(true);
+      if (!weatherPermGranted && locStatus) {
+        const locName = state.environment.location?.name;
+        setText(
+          locStatus,
+          locName
+            ? `已读取浏览器位置（${locName}），但未授予实况天气网络权限；允许权限后即可更新实时天气。`
+            : '已读取浏览器精确定位坐标，但实时天气需要授予网络访问权限后方可获取。'
+        );
+      }
+    } finally {
+      requestGeoBtn.disabled = false;
+    }
   });
 
   const citySearchInput = document.getElementById('citySearchInput');
@@ -4956,6 +6057,10 @@ function initSettingsModalControls() {
 
   async function performCitySearch() {
     if (!citySearchInput || !cityResultsBox) return;
+    if (searchAbortController) {
+      searchAbortController.abort();
+      searchAbortController = null;
+    }
     const term = citySearchInput.value.trim();
     clearElement(cityResultsBox);
     if (term.length < 2) {
@@ -4965,15 +6070,42 @@ function initSettingsModalControls() {
       return;
     }
 
-    if (searchAbortController) searchAbortController.abort();
-    searchAbortController = new AbortController();
+    const localController = new AbortController();
+    searchAbortController = localController;
 
     cityResultsBox.appendChild(
       el('div', { className: 'widget-empty-hint', textContent: '正在搜索匹配城市…' })
     );
 
+    const requestCitySearchFn = window.LaunchDeckLocation?.requestCitySearch;
+    if (typeof requestCitySearchFn === 'function') {
+      let granted = false;
+      try {
+        const cityPermPromise = requestCitySearchFn.call(window.LaunchDeckLocation);
+        granted = Boolean(await cityPermPromise);
+      } catch {
+        granted = false;
+      }
+      if (localController.signal.aborted || searchAbortController !== localController) {
+        return;
+      }
+      if (!granted) {
+        clearElement(cityResultsBox);
+        cityResultsBox.appendChild(
+          el('div', {
+            className: 'widget-error-inline',
+            textContent: '城市搜索需要授予地理编码服务网络权限，请在权限弹窗中允许后重试。',
+          })
+        );
+        return;
+      }
+    }
+
     try {
-      const result = await featureClient.searchLocations(term, { signal: searchAbortController.signal });
+      const result = await featureClient.searchLocations(term, { signal: localController.signal });
+      if (localController.signal.aborted || searchAbortController !== localController) {
+        return;
+      }
       clearElement(cityResultsBox);
       const list = Array.isArray(result?.locations) ? result.locations : [];
       if (list.length === 0) {
@@ -4983,21 +6115,91 @@ function initSettingsModalControls() {
         return;
       }
 
+      const stripAdminSuffix = (val) =>
+        String(val || '')
+          .trim()
+          .replace(/(?:特别行政区|壮族自治区|回族自治区|维吾尔自治区|自治区|自治州|地区|省|市|区|县|盟|旗)$/u, '')
+          .trim();
+      const cleanTerm = String(term || '').trim();
+      const termCore = stripAdminSuffix(cleanTerm);
+
       for (const item of list) {
-        const subMeta = [item.region, item.country, item.timeZone].filter(Boolean).join(' · ');
+        const rawName = String(item?.name || '').trim();
+        const rawRegion = String(item?.region || '').trim();
+        const rawCountry = String(item?.country || '').trim();
+        const rawTimeZone = String(item?.timeZone || '').trim();
+        const isDomestic =
+          rawCountry === '中国' ||
+          rawCountry.toLowerCase() === 'china' ||
+          result?.provider === 'UAPI';
+
+        let displayTitle = rawName;
+        let subMeta = '';
+
+        if (isDomestic) {
+          if (!rawRegion || rawName === rawRegion) {
+            displayTitle = rawName || rawRegion;
+          } else if (rawName.startsWith(rawRegion)) {
+            const rest = rawName
+              .slice(rawRegion.length)
+              .replace(/^[\s·•\-/]+/u, '')
+              .trim();
+            displayTitle = rest && rest !== rawRegion ? `${rawRegion} · ${rest}` : rawName;
+          } else if (rawRegion.startsWith(rawName)) {
+            displayTitle = rawName;
+          } else {
+            displayTitle = `${rawRegion} · ${rawName}`;
+          }
+
+          const nameCore = stripAdminSuffix(rawName);
+          const regionCore = stripAdminSuffix(rawRegion);
+          const isMunicipality = Boolean(rawRegion && rawName === rawRegion);
+          const isProvinceQuery =
+            !isMunicipality &&
+            Boolean(
+              rawRegion &&
+                cleanTerm &&
+                (cleanTerm === rawRegion || (termCore.length >= 2 && termCore === regionCore)) &&
+                cleanTerm !== rawName &&
+                termCore !== nameCore
+            );
+          const isExactMatch = Boolean(
+            cleanTerm &&
+              (cleanTerm === rawName || (termCore.length >= 2 && termCore === nameCore))
+          );
+          const isDistrict = /[区县旗]$/u.test(rawName) && !/市$/u.test(rawName);
+
+          let roleLabel = '城市';
+          if (isMunicipality) {
+            roleLabel = '直辖市';
+          } else if (isProvinceQuery) {
+            roleLabel = '省辖城市';
+          } else if (isExactMatch) {
+            roleLabel = isDistrict ? '匹配区县' : '匹配城市';
+          } else if (isDistrict) {
+            roleLabel = '区县';
+          }
+
+          subMeta = [roleLabel, rawCountry || '中国', rawTimeZone].filter(Boolean).join(' · ');
+        } else {
+          const dedupRegion =
+            rawRegion && rawRegion.toLowerCase() !== rawName.toLowerCase() ? rawRegion : '';
+          subMeta = [dedupRegion, rawCountry, rawTimeZone].filter(Boolean).join(' · ');
+        }
+
         const btn = el(
           'button',
           {
             type: 'button',
             className: 'city-result-item',
           },
-          el('span', { className: 'city-result-name', textContent: item.name }),
+          el('span', { className: 'city-result-name', textContent: displayTitle }),
           el('span', { className: 'city-result-meta', textContent: subMeta })
         );
         btn.addEventListener('click', async () => {
           // Extract strictly the 4 permitted manual location fields
           const manualCity = {
-            name: String(item.name).slice(0, 120),
+            name: String(rawName).slice(0, 120),
             latitude: Number(item.latitude),
             longitude: Number(item.longitude),
             timeZone: String(item.timeZone),
@@ -5022,7 +6224,9 @@ function initSettingsModalControls() {
         cityResultsBox.appendChild(btn);
       }
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError' || localController.signal.aborted || searchAbortController !== localController) {
+        return;
+      }
       clearElement(cityResultsBox);
       cityResultsBox.appendChild(
         el('div', { className: 'widget-error-inline', textContent: err.message || '城市搜索服务暂不可用' })
@@ -5303,9 +6507,27 @@ function switchAddModalMode(mode = 'site') {
   }
 }
 
+const ADD_WIDGET_DESCRIPTIONS = Object.freeze({
+  'clock-weather': '时间、实况天气与逐小时预报',
+  'focus-timer': '番茄专注与休息计时',
+  'quick-note': '随手记录，自动同步',
+  todo: '共享待办清单',
+  calendar: '月历速览、日期标记、节假日与到期待办',
+  'world-clock': '多城市时间对照',
+  'weather-badge': '实况温度与天气图标',
+  'date-tile': '突出今天的日期与星期',
+  'focus-launcher': '一键开始或停止专注',
+  countdown: '距离重要日子的天数',
+  habits: '每日习惯打卡与七天进度',
+  'today-dashboard': '天气、待办与最近倒数一览',
+  'weather-strip': '未来六小时天气横条',
+  'currency-converter': '常用币种参考汇率换算',
+});
+
 function renderAddWidgetModalList() {
   const listEl = document.getElementById('availableWidgetsToAddList');
-  const hintEl = document.getElementById('addWidgetPanelHint');
+  const hintEl =
+    document.getElementById('addWidgetPanelHint') || document.getElementById('addWidgetPanelDesc');
   if (!listEl) return;
   clearElement(listEl);
 
@@ -5314,51 +6536,97 @@ function renderAddWidgetModalList() {
     setText(hintEl, `选择一个未在桌面显示的小组件，添加后将追加到「${currentPage.title}」页末尾。`);
   }
 
-  const defMap = new Map(
-    (state.widgetRegistry.length ? state.widgetRegistry : DEFAULT_WIDGET_DEFINITIONS).map(d => [d.type, d])
-  );
+  const defs = state.widgetRegistry.length ? state.widgetRegistry : DEFAULT_WIDGET_DEFINITIONS;
+  const defMap = new Map(defs.map(d => [d.type, d]));
+  const hasLocalRenderer = (type) => !(WIDGET_MODULE_MAP instanceof Map) || WIDGET_MODULE_MAP.size === 0 || WIDGET_MODULE_MAP.has(type);
   const layout = normalizeWidgetLayout(state.widgetState.layout, state.widgetRegistry);
-  const disabledWidgets = layout.filter(item => !item.enabled);
+  const layoutTypes = new Set(layout.map(item => item.type));
+  const layoutFull = layout.length >= MAX_WIDGET_LAYOUT_ENTRIES;
 
-  if (disabledWidgets.length === 0) {
+  // Existing disabled rows (re-enable keeps config/data) + never-added opt-in definitions
+  const candidates = [
+    ...layout
+      .filter(item => !item.enabled && hasLocalRenderer(item.type))
+      .map(item => ({ key: item.id, type: item.type, isNew: false, row: item })),
+    ...defs
+      .filter(
+        d =>
+          d &&
+          d.defaultEnabled === false &&
+          !d.importOnly &&
+          !layoutTypes.has(d.type) &&
+          hasLocalRenderer(d.type)
+      )
+      .map(d => ({ key: d.type, type: d.type, isNew: true, row: null })),
+  ];
+
+  if (candidates.length === 0) {
+    const placedCount = layout.filter(item => item.enabled).length;
     listEl.appendChild(
       el(
         'div',
         { className: 'widget-empty-hint add-widget-empty-state' },
-        '全部 6 个小组件均已放置在桌面上。如需移到当前页，可在编辑模式将小组件拖动到屏幕边缘或分类标签切换页面。'
+        `全部 ${placedCount} 个可用小组件均已放置在桌面上。如需移到当前页，可在编辑模式将小组件拖动到屏幕边缘或分类标签切换页面。`
       )
     );
     return;
   }
 
-  disabledWidgets.forEach((item) => {
-    const def = defMap.get(item.type) || { title: item.type, capabilities: [] };
+  if (layoutFull && candidates.some(c => c.isNew)) {
+    listEl.appendChild(
+      el('div', {
+        className: 'widget-empty-hint add-widget-limit-hint',
+        role: 'note',
+        textContent: `小组件记录已达 ${MAX_WIDGET_LAYOUT_ENTRIES} 个上限：可重新启用已有组件；新增类型前请先在设置或备份中清理不再使用的组件。`,
+      })
+    );
+  }
+
+  candidates.forEach(({ key, type, isNew, row }) => {
+    const def = defMap.get(type) || { title: type, capabilities: [] };
+    const displayTitle = row ? getWidgetDisplayTitle(row) : def.title || type;
+    const blocked = isNew && layoutFull;
+    const supported = getSupportedSizesForWidgetType(type, state.widgetRegistry);
+    const sizePreview = WIDGET_SIZE_OPTIONS.filter(opt => supported.includes(opt.value))
+      .map(opt => opt.shortLabel)
+      .join(' / ');
+    const description =
+      type === 'imported-card'
+        ? '本地导入的组件卡片'
+        : ADD_WIDGET_DESCRIPTIONS[type] || '';
+    const subText = [
+      description,
+      sizePreview ? `尺寸 ${sizePreview}` : '',
+      isNew ? '新组件' : '保留原有配置与数据',
+    ]
+      .filter(Boolean)
+      .join(' · ');
     const addBtn = el('button', {
       type: 'button',
       className: 'ios-btn primary add-widget-action-btn',
-      dataset: { addWidgetId: item.id },
-      textContent: '添加至当前页',
+      dataset: { addWidgetId: key },
+      disabled: blocked,
+      'aria-label': `添加 ${displayTitle} 至「${currentPage.title}」`,
+      textContent: blocked ? '已达上限' : '添加至当前页',
     });
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       gestureBlockBlankExit = true;
-      addWidgetToCurrentPage(item.id);
+      if (blocked) return;
+      addWidgetToCurrentPage(key);
     });
 
     const card = el(
       'div',
       {
-        className: 'add-widget-card',
-        dataset: { widgetId: item.id, widgetType: item.type },
+        className: `add-widget-card${blocked ? ' is-blocked' : ''}`,
+        dataset: { widgetId: key, widgetType: type, widgetNew: isNew ? 'true' : 'false' },
       },
       el(
         'div',
         { className: 'add-widget-card-info' },
-        el('div', { className: 'add-widget-card-title', textContent: def.title || item.type }),
-        el('div', {
-          className: 'add-widget-card-sub',
-          textContent: `已保留原有配置与数据 · 点击添加至「${currentPage.title}」`,
-        })
+        el('div', { className: 'add-widget-card-title', textContent: displayTitle }),
+        el('div', { className: 'add-widget-card-sub', textContent: subText })
       ),
       addBtn
     );
@@ -5379,6 +6647,11 @@ function addWidgetToCurrentPage(widgetId) {
       definitions: state.widgetRegistry,
     }
   );
+  if (res?.added === false) {
+    // Impossible add (unknown type or 24-entry cap): no persist, just refresh the picker explanation
+    renderAddWidgetModalList();
+    return;
+  }
   commitDesktopAndLayout(res.desktop, res.layout);
   renderAddWidgetModalList();
 }
@@ -5678,6 +6951,40 @@ function initEditAndModals() {
       closeAllPopovers();
       addSiteModal.hidden = true;
       schedulePostRenderGridCalibration();
+    });
+  }
+  if (addSiteModal) {
+    addSiteModal.addEventListener('click', (e) => {
+      if (e.target === addSiteModal) {
+        e.stopPropagation();
+        gestureBlockBlankExit = true;
+        closeAllPopovers();
+        addSiteModal.hidden = true;
+        schedulePostRenderGridCalibration();
+      }
+    });
+  }
+  if (addPageModal) {
+    addPageModal.addEventListener('click', (e) => {
+      if (e.target === addPageModal) {
+        e.stopPropagation();
+        gestureBlockBlankExit = true;
+        closeAllPopovers();
+        state.editingPageId = null;
+        addPageModal.hidden = true;
+        schedulePostRenderGridCalibration();
+      }
+    });
+  }
+  if (apiModal) {
+    apiModal.addEventListener('click', (e) => {
+      if (e.target === apiModal) {
+        e.stopPropagation();
+        gestureBlockBlankExit = true;
+        closeAllPopovers();
+        apiModal.hidden = true;
+        schedulePostRenderGridCalibration();
+      }
     });
   }
   if (saveSiteBtn && addSiteForm) {
@@ -6014,11 +7321,13 @@ function setJiggleMode(enabled) {
   }
   document.body.classList.toggle('jiggle-mode', state.jiggleMode);
   document.querySelectorAll('.app-item, .ios-widget').forEach((elNode) => {
-    elNode.draggable = state.jiggleMode;
+    elNode.draggable = Boolean(state.jiggleMode);
   });
-  document.querySelectorAll('.delete-badge, .widget-size-btn').forEach((btn) => {
-    btn.disabled = !state.jiggleMode;
-  });
+  document
+    .querySelectorAll('.delete-badge, .widget-size-btn, .site-size-toggle')
+    .forEach((btn) => {
+      btn.disabled = !state.jiggleMode;
+    });
   const openAddBtn = document.getElementById('openAddModalBtn');
   if (openAddBtn) {
     openAddBtn.hidden = !state.jiggleMode;
@@ -6242,5 +7551,6 @@ export {
   widgetHost,
   localWallpaperController,
   navigationBackupController,
+  notificationsUIController,
   WIDGET_MODULE_MAP,
 };

@@ -1,3 +1,12 @@
+import { normalizeWidgetSize } from './feature-client.js';
+import {
+  MAX_CELL_ROW,
+  MAX_CELL_COLUMN,
+  isFixedCellCapableKind,
+  normalizePlacementCell,
+  formatCellKey,
+} from './desktop-cells.js';
+
 export const MOBILE_DISPLAY_MODE_STORAGE_KEY = 'ios18_mobile_display_mode_v1';
 export const MOBILE_BREAKPOINT_PX = 768;
 
@@ -83,57 +92,177 @@ export function resolveEffectiveDisplayMode({
   return normalizeMobileDisplayMode(mobileDisplayMode);
 }
 
+/** Column × row spans for every widget size enum (width × height). Legacy 4×2 `wide` is migrated away. */
+export const WIDGET_SIZE_SPANS = Object.freeze({
+  single: Object.freeze({ colSpan: 1, rowSpan: 1 }),
+  compact: Object.freeze({ colSpan: 2, rowSpan: 1 }),
+  square: Object.freeze({ colSpan: 2, rowSpan: 2 }),
+  landscape: Object.freeze({ colSpan: 3, rowSpan: 2 }),
+  tall: Object.freeze({ colSpan: 2, rowSpan: 3 }),
+  large: Object.freeze({ colSpan: 3, rowSpan: 3 }),
+  full: Object.freeze({ colSpan: 4, rowSpan: 4 }),
+  strip: Object.freeze({ colSpan: 4, rowSpan: 1 }),
+});
+
+export const WIDGET_DISPLAY_SIZES = Object.freeze(Object.keys(WIDGET_SIZE_SPANS));
+
+/** Sizes whose painted card is a true square (equal column and row spans). */
+export const SQUARE_WIDGET_SIZES = Object.freeze(['single', 'square', 'large', 'full']);
+
+/** Widget types whose saved size is fixed and must never be temporarily downgraded. */
+export const FIXED_SIZE_WIDGET_TYPES = Object.freeze(['currency-converter']);
+
+/**
+ * Widget types whose minimum supported display size is `square` (2×2) and no longer support `compact` (2×1).
+ * When their selected size (`landscape` 3×2 or `full` 4×4) cannot fit the available columns/rows, they
+ * temporarily fall back to `square` (2×2); when even 2×2 cannot fit (<2 rows or <2 cols), they keep `square`
+ * so packing routes them to `查看全部` overflow without mutating the user's saved preference.
+ */
+export const SQUARE_MINIMUM_WIDGET_TYPES = Object.freeze(['clock-weather', 'calendar']);
+
+// Temporary (display-only) downgrade chain when a saved size does not fit the current grid.
+const WIDGET_SIZE_FALLBACKS = Object.freeze({
+  full: 'square',
+  large: 'square',
+  tall: 'square',
+  landscape: 'square',
+  strip: 'compact',
+  square: 'compact',
+  compact: 'compact',
+  single: 'single',
+});
+
 export function resolveWidgetDisplaySize(item, metrics = {}) {
   if (!item || item.kind !== 'widget') {
     return 'compact';
   }
   const widget = item.widget || item;
   const widgetType = widget?.type || item?.type || '';
-  const rawSize = widget?.size || item?.size || 'compact';
-  let size = rawSize === 'square' || rawSize === 'wide' ? rawSize : 'compact';
-
-  if (widgetType === 'focus-timer' && size === 'wide') {
+  const rawSize = widget?.size ?? item?.size;
+  // Unsaved/unsupported/legacy sizes resolve through the builtin registry (incl. legacySizes such as
+  // wide → square/strip, large → full): legacy types keep the historical fallback, daily types use their default.
+  let size = normalizeWidgetSize(rawSize, widgetType || null);
+  if (!Object.hasOwn(WIDGET_SIZE_SPANS, size)) {
     size = 'compact';
   }
 
-  if (metrics?.isMobile === true && metrics?.effectiveMode === DISPLAY_MODES.COMPACT) {
-    return 'compact';
+  // Built-in currency converter is always 2×2; when it cannot fit it goes to 查看全部 / detail instead.
+  if (FIXED_SIZE_WIDGET_TYPES.includes(widgetType)) {
+    return size;
   }
 
   const maxRows =
     metrics?.maxRows !== undefined && metrics?.maxRows !== null ? Number(metrics.maxRows) : 6;
-  if (Number.isFinite(maxRows) && maxRows < 2) {
-    return 'compact';
+  const rowsAvailable = Number.isFinite(maxRows) ? maxRows : 6;
+  const columns = Math.max(1, Number(metrics?.columns) || 6);
+
+  // Clock-weather (square 2×2 / landscape 3×2) and calendar (square 2×2 / full 4×4) never degrade to 2×1:
+  // show the selected size whenever its columns × rows fit (including landscape 3×2 on 2-row viewports),
+  // otherwise fall back to 2×2 square (which overflows to 查看全部 if <2 rows or <2 columns are available).
+  if (SQUARE_MINIMUM_WIDGET_TYPES.includes(widgetType)) {
+    const span = WIDGET_SIZE_SPANS[size] || WIDGET_SIZE_SPANS.square;
+    if (span.colSpan <= columns && span.rowSpan <= rowsAvailable) {
+      return size;
+    }
+    return 'square';
   }
 
-  const columns = Math.max(1, Number(metrics?.columns) || 6);
-  if (size === 'wide' && columns < 4) {
-    size = 'square';
+  // Height-constrained windows (fewer than 3 visible rows, e.g. 800x420 desktop or very short phones)
+  // temporarily render other multi-cell widgets as a readable 2x1 summary so more cards/sites fit
+  // (1x1 stays 1x1). Stored size is untouched; enlarging the window restores the saved layout.
+  // Normal phones (375x667 compact = 8 rows, comfort ≈ 4 rows) and desktops (>= 3 rows) keep sizes.
+  if (Number.isFinite(maxRows) && maxRows < 3) {
+    return size === 'single' ? 'single' : 'compact';
+  }
+
+  if (columns < 2) {
+    return size === 'single' ? 'single' : 'compact';
+  }
+  let guard = 0;
+  while (guard < 6) {
+    const span = WIDGET_SIZE_SPANS[size];
+    if (span.colSpan <= columns && span.rowSpan <= rowsAvailable) break;
+    const next = WIDGET_SIZE_FALLBACKS[size] || 'compact';
+    if (next === size) break;
+    size = next;
+    guard += 1;
   }
 
   return size;
 }
 
+/** Page site tiles: 1×1 by default, optional 2×2 (`site.size === 'square'`). Dock/folders stay 1×1. */
+export const SITE_SIZE_SPANS = Object.freeze({
+  single: Object.freeze({ colSpan: 1, rowSpan: 1 }),
+  square: Object.freeze({ colSpan: 2, rowSpan: 2 }),
+});
+
+export function resolveSiteDisplaySize(entryOrSite) {
+  const site = entryOrSite?.kind === 'site' ? entryOrSite.site : entryOrSite;
+  return site && site.size === 'square' ? 'square' : 'single';
+}
+
 export function getWidgetGridSpan(item, metrics = {}) {
   const columns = Math.max(1, Number(metrics?.columns) || 6);
+  if (item && item.kind === 'site') {
+    // 2×2 sites are never downgraded; if they cannot fit they go to 查看全部 (like currency)
+    const span = SITE_SIZE_SPANS[resolveSiteDisplaySize(item)];
+    return { colSpan: Math.min(columns, span.colSpan), rowSpan: span.rowSpan };
+  }
   if (!item || item.kind !== 'widget') {
     return { colSpan: 1, rowSpan: 1 };
   }
   const size = resolveWidgetDisplaySize(item, metrics);
-  if (size === 'wide') {
-    return { colSpan: Math.min(columns, 4), rowSpan: 2 };
+  if (size === 'compact') {
+    const defaultColSpan = Math.min(columns, Math.max(1, Number(metrics?.widgetColSpan) || 2));
+    const defaultRowSpan = Math.max(1, Number(metrics?.widgetRowSpan) || 1);
+    return { colSpan: defaultColSpan, rowSpan: defaultRowSpan };
   }
-  if (size === 'square') {
-    return { colSpan: Math.min(columns, 2), rowSpan: 2 };
-  }
-  const defaultColSpan = Math.min(columns, Math.max(1, Number(metrics?.widgetColSpan) || 2));
-  const defaultRowSpan = Math.max(1, Number(metrics?.widgetRowSpan) || 1);
-  return { colSpan: defaultColSpan, rowSpan: defaultRowSpan };
+  const span = WIDGET_SIZE_SPANS[size] || WIDGET_SIZE_SPANS.compact;
+  return { colSpan: Math.min(columns, span.colSpan), rowSpan: span.rowSpan };
+}
+
+export const DESKTOP_MIN_COLUMNS = 6;
+export const DESKTOP_MAX_COLUMNS = 48;
+export const DESKTOP_TARGET_TRACK_WIDTH_PX = 90;
+export const DESKTOP_MAX_TRACK_WIDTH_PX = 106;
+export const DESKTOP_SHELL_GUTTER_MIN_PX = 28;
+export const DESKTOP_SHELL_GUTTER_MAX_PX = 180;
+export const DESKTOP_PAGE_INLINE_PADDING_PX = 16;
+
+/**
+ * Desktop shell inline padding per side. Must match CSS
+ * `clamp(28px, calc(6.7vw - 25.6px), 180px)` on .springboard-shell (desktop only):
+ * ~28px at <=800px, ~60px at 1280px, ~103px at 1920px (≈116px visible gutter with page padding),
+ * capped at 180px on very wide screens so additional columns are still added.
+ */
+export function computeDesktopShellGutterPx(viewportWidth = 1280) {
+  const w = Math.max(320, Number(viewportWidth) || 1280);
+  const raw = w * 0.067 - 25.6;
+  return Math.min(
+    DESKTOP_SHELL_GUTTER_MAX_PX,
+    Math.max(DESKTOP_SHELL_GUTTER_MIN_PX, Math.round(raw))
+  );
+}
+
+export function computeDesktopGridColumns({
+  availableGridWidth = 1228,
+  colGap = 12,
+  targetTrackWidth = DESKTOP_TARGET_TRACK_WIDTH_PX,
+  minColumns = DESKTOP_MIN_COLUMNS,
+  maxColumns = DESKTOP_MAX_COLUMNS,
+} = {}) {
+  const usableW = Math.max(320, Math.floor(Number(availableGridWidth) || 1228));
+  const gap = Math.max(0, Math.round(Number(colGap) || 12));
+  const track = Math.max(64, Math.round(Number(targetTrackWidth) || DESKTOP_TARGET_TRACK_WIDTH_PX));
+  const pitch = track + gap;
+  const rawCols = Math.floor((usableW + gap) / pitch);
+  return Math.min(maxColumns, Math.max(minColumns, rawCols));
 }
 
 /**
  * Computes responsive single-screen metrics for:
- * - Desktop Compact (e.g. 1280x720, 1366x768, 1440x900)
+ * - Desktop Compact (e.g. 1280x720, 1366x768, 1440x900, 1920x1080, 2560x1440)
  * - Mobile Compact (e.g. 375x812, 375x667)
  * - Mobile Comfort (relaxed multi-screen view paging)
  *
@@ -146,7 +275,10 @@ export function computeSingleScreenMetrics({
   mobileDisplayMode = DISPLAY_MODES.COMPACT,
   safeAreaTop = 0,
   safeAreaBottom = 0,
+  safeAreaLeft = 0,
+  safeAreaRight = 0,
   measuredAvailableGridHeight = null,
+  measuredAvailableGridWidth = null,
 } = {}) {
   const width = Math.max(320, Math.round(Number(viewportWidth) || 1280));
   const rawHeight = Math.round(Number(viewportHeight) || 800);
@@ -158,15 +290,42 @@ export function computeSingleScreenMetrics({
     measuredAvailableGridHeight !== undefined &&
     Number.isFinite(Number(measuredAvailableGridHeight)) &&
     Number(measuredAvailableGridHeight) > 0;
+  const hasMeasuredGridWidth =
+    measuredAvailableGridWidth !== null &&
+    measuredAvailableGridWidth !== undefined &&
+    Number.isFinite(Number(measuredAvailableGridWidth)) &&
+    Number(measuredAvailableGridWidth) > 0;
 
   if (!isMobile) {
-    // Desktop Compact: 8 columns, each summary widget spans 2x1 (equal to 2 site cells).
-    // 6 widgets = 12 cells + 24 sites = 36 cells -> 5 rows (ceil(36 / 8) = 5).
-    const columns = width >= 1180 ? 8 : 6;
+    // Desktop Compact: dynamically choose columns (min 6) from usable grid width
+    // using modest responsive side gutters (~28-72px shell inline padding + 16px page padding)
+    // and a tight column pitch (~102-104px: ~90px target track + 12-14px colGap).
+    const shellGutterPx = computeDesktopShellGutterPx(width);
+    const reservedSideGuttersPx = shellGutterPx * 2 + DESKTOP_PAGE_INLINE_PADDING_PX;
+    const unmeasuredWidth =
+      width - reservedSideGuttersPx - Math.max(0, safeAreaLeft) - Math.max(0, safeAreaRight);
+    const availableGridWidth = hasMeasuredGridWidth
+      ? Math.max(320, Math.floor(Number(measuredAvailableGridWidth)))
+      : Math.max(320, unmeasuredWidth);
+    const colGap = width <= 1280 ? 12 : 14;
+    const columns = computeDesktopGridColumns({
+      availableGridWidth,
+      colGap,
+      targetTrackWidth: DESKTOP_TARGET_TRACK_WIDTH_PX,
+      minColumns: DESKTOP_MIN_COLUMNS,
+      maxColumns: DESKTOP_MAX_COLUMNS,
+    });
+    const rawTrackWidth = Math.floor(
+      (availableGridWidth - colGap * Math.max(0, columns - 1)) / columns
+    );
+    const trackMaxWidth = Math.min(
+      DESKTOP_MAX_TRACK_WIDTH_PX,
+      Math.max(82, rawTrackWidth)
+    );
     const widgetColSpan = 2;
     const widgetRowSpan = 1;
     const maxDefaultCells = 6 * widgetColSpan + 24; // 36
-    const targetRows = Math.ceil(maxDefaultCells / columns); // 5 on 8-col, 6 on 6-col
+    const targetRows = Math.max(4, Math.ceil(maxDefaultCells / columns));
     const reservedChromePx = height <= 740 ? 276 : 284;
     const unmeasuredHeight = height - reservedChromePx - Math.max(0, safeAreaTop) - Math.max(0, safeAreaBottom);
     const availableGridHeight = hasMeasuredGridHeight
@@ -175,7 +334,6 @@ export function computeSingleScreenMetrics({
         ? Math.max(60, unmeasuredHeight)
         : Math.max(260, unmeasuredHeight);
     const rowGap = height <= 740 ? 8 : 10;
-    const colGap = width <= 1280 ? 12 : 14;
     const rawRowHeight = Math.floor(
       (availableGridHeight - rowGap * Math.max(0, targetRows - 1)) / targetRows
     );
@@ -191,6 +349,9 @@ export function computeSingleScreenMetrics({
       isMobile: false,
       effectiveMode: DISPLAY_MODES.COMPACT,
       columns,
+      trackMaxWidth,
+      shellGutterPx,
+      availableGridWidth,
       widgetColSpan,
       widgetRowSpan,
       widgetUnitCost: widgetColSpan * widgetRowSpan,
@@ -249,12 +410,12 @@ export function computeSingleScreenMetrics({
     };
   }
 
-  // Mobile Compact Mode: 6 columns, summary widget spans 2x1 (3 widgets per row = 2 rows for 6 widgets + 4 rows for 24 sites = 6 rows total).
-  // Fits 6 widgets + 24 sites on 375x667 and 375x812 in a single screen with zero vertical scroll and icons >= 32px.
+  // Mobile Compact Mode: 6 columns, preserving saved wide (4x2), square (2x2), and compact (2x1) widgets.
+  // Target 8 rows so default mixed-size widgets (4 rows) plus 24 sites (4 rows) fit on 375x667/375x812 with rowHeight >= 48px and icons >= 30px; excess still uses overflow fallback.
   const columns = 6;
   const widgetColSpan = 2;
   const widgetRowSpan = 1;
-  const targetRows = 6; // 6 * 6 = 36 units (6 widgets * 2 + 24 sites)
+  const targetRows = 8;
   const reservedChromePx = height <= 680 ? 256 : 268;
   const unmeasuredHeight = height - reservedChromePx - Math.max(0, safeAreaTop) - Math.max(0, safeAreaBottom);
   const availableGridHeight = hasMeasuredGridHeight
@@ -295,6 +456,18 @@ export function computeSingleScreenMetrics({
   };
 }
 
+function getIntrinsicRequiredColSpan(entry, metrics) {
+  if (!entry) return 1;
+  if (entry.kind === 'site') {
+    return SITE_SIZE_SPANS[resolveSiteDisplaySize(entry)].colSpan;
+  }
+  if (entry.kind === 'widget') {
+    const size = resolveWidgetDisplaySize(entry, metrics);
+    return (WIDGET_SIZE_SPANS[size] || WIDGET_SIZE_SPANS.compact).colSpan;
+  }
+  return 1;
+}
+
 function findNextGridSlot(occupied, startRow, startCol, colSpan, rowSpan, safeCols) {
   let r = startRow;
   let c = startCol;
@@ -331,19 +504,374 @@ function markGridSlotOccupied(occupied, row, col, colSpan, rowSpan, safeCols) {
   }
 }
 
+function resolveMetricsMaxRows(metrics = {}, columns = 6) {
+  const computedMaxRows =
+    Number(metrics?.maxRows) > 0
+      ? Math.floor(Number(metrics.maxRows))
+      : metrics?.availableGridHeight && metrics?.rowHeight
+        ? Math.floor(
+            (Number(metrics.availableGridHeight) + Number(metrics.rowGap || 0)) /
+              (Number(metrics.rowHeight) + Number(metrics.rowGap || 0))
+          )
+        : Math.floor(
+            (Number(metrics?.maxUnitsPerView || metrics?.maxVisibleCompactUnits) || 36) / columns
+          );
+  return Math.max(1, computedMaxRows);
+}
+
+function getEntryKey(entry) {
+  if (!entry || !entry.kind) return '';
+  const id = getEntryId(entry);
+  return id ? `${entry.kind}:${id}` : '';
+}
+
+function doesGridSlotCollide(occupied, row, col, colSpan, rowSpan, safeCols) {
+  for (let dr = 0; dr < rowSpan; dr += 1) {
+    for (let dc = 0; dc < colSpan; dc += 1) {
+      if (occupied.has((row + dr) * safeCols + (col + dc))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Reserves non-colliding, fully fitting fixed cells in placement order for a page's items.
+ * Returns a Map keyed by `kind:id` with values `{ row, column, colSpan, rowSpan }`.
+ */
+export function getFixedCellsForPage(items = [], metrics = {}) {
+  const list = Array.isArray(items) ? items : [];
+  const columns = Math.max(1, Number(metrics?.columns) || 6);
+  const maxRows = resolveMetricsMaxRows(metrics, columns);
+  const effectiveMetrics = { ...metrics, columns, maxRows };
+  const fixedCells = new Map();
+  const occupied = new Set();
+
+  for (const entry of list) {
+    if (!entry || (entry.kind !== 'site' && entry.kind !== 'widget')) continue;
+    const cell = normalizePlacementCell(entry.cell, entry.kind);
+    if (!cell) continue;
+    const key = getEntryKey(entry);
+    if (!key || fixedCells.has(key)) continue;
+
+    const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
+    const requiredCols = getIntrinsicRequiredColSpan(entry, effectiveMetrics);
+    const span = Math.min(columns, Math.max(1, colSpan));
+    const rSpan = Math.max(1, rowSpan);
+
+    if (rSpan > maxRows || requiredCols > columns) {
+      continue;
+    }
+    if (cell.row < 0 || cell.column < 0) {
+      continue;
+    }
+    if (cell.column + span > columns || cell.row + rSpan > maxRows) {
+      continue;
+    }
+    if (doesGridSlotCollide(occupied, cell.row, cell.column, span, rSpan, columns)) {
+      continue;
+    }
+
+    markGridSlotOccupied(occupied, cell.row, cell.column, span, rSpan, columns);
+    fixedCells.set(key, {
+      row: cell.row,
+      column: cell.column,
+      colSpan: span,
+      rowSpan: rSpan,
+    });
+  }
+
+  return fixedCells;
+}
+
+function doGridRectsIntersect(a, b) {
+  return (
+    a.column < b.column + b.colSpan &&
+    a.column + a.colSpan > b.column &&
+    a.row < b.row + b.rowSpan &&
+    a.row + a.rowSpan > b.row
+  );
+}
+
+/**
+ * Pure drag-to-cell planner for a target page's main grid.
+ * Returns `{ targetRect: { row, column, colSpan, rowSpan }, moves: [{ kind, id, cell: { row, column } }] }`
+ * when `entry` and every directly intersecting pinned card can fit without colliding or reusing an
+ * unchanged placement's saved anchor; otherwise returns `null` with zero mutation.
+ */
+export function planDesktopCellDrop({
+  entry,
+  items = [],
+  rawPlacements = [],
+  metrics = {},
+  cell,
+} = {}) {
+  if (!entry || !isFixedCellCapableKind(entry.kind)) {
+    return null;
+  }
+  const draggedId = getEntryId(entry).trim();
+  if (!draggedId) {
+    return null;
+  }
+  const normalizedTargetCell = normalizePlacementCell(cell, entry.kind);
+  if (!normalizedTargetCell) {
+    return null;
+  }
+
+  const rawCols = Math.max(1, Math.floor(Number(metrics?.columns) || 6));
+  const columns = Math.min(MAX_CELL_COLUMN + 1, rawCols);
+  const rawMaxRows = resolveMetricsMaxRows(metrics, columns);
+  const maxRows = Math.min(MAX_CELL_ROW + 1, rawMaxRows);
+  const effectiveMetrics = { ...metrics, columns, maxRows };
+
+  const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
+  const requiredCols = getIntrinsicRequiredColSpan(entry, effectiveMetrics);
+  const span = Math.min(columns, Math.max(1, colSpan));
+  const rSpan = Math.max(1, rowSpan);
+
+  if (rSpan > maxRows || requiredCols > columns) {
+    return null;
+  }
+  if (
+    normalizedTargetCell.column + span > columns ||
+    normalizedTargetCell.row + rSpan > maxRows
+  ) {
+    return null;
+  }
+
+  const targetRect = {
+    row: normalizedTargetCell.row,
+    column: normalizedTargetCell.column,
+    colSpan: span,
+    rowSpan: rSpan,
+  };
+
+  const draggedKey = `${entry.kind}:${draggedId}`;
+  const pageItems = Array.isArray(items) ? items : [];
+  const otherItems = [];
+  const otherSeenKeys = new Set();
+
+  for (const item of pageItems) {
+    if (!item) continue;
+    const itemKey = getEntryKey(item);
+    if (!itemKey || itemKey === draggedKey || otherSeenKeys.has(itemKey)) continue;
+    otherSeenKeys.add(itemKey);
+    otherItems.push(item);
+  }
+
+  const otherFixedCells = getFixedCellsForPage(otherItems, effectiveMetrics);
+  const affectedPins = [];
+  const affectedKeySet = new Set();
+  const occupied = new Set();
+
+  markGridSlotOccupied(
+    occupied,
+    targetRect.row,
+    targetRect.column,
+    targetRect.colSpan,
+    targetRect.rowSpan,
+    columns
+  );
+
+  otherItems.forEach((item, listIndex) => {
+    const itemKey = getEntryKey(item);
+    const rect = itemKey ? otherFixedCells.get(itemKey) : null;
+    if (!rect) return;
+    if (doGridRectsIntersect(rect, targetRect)) {
+      affectedKeySet.add(itemKey);
+      affectedPins.push({
+        key: itemKey,
+        kind: item.kind,
+        id: getEntryId(item).trim(),
+        originRow: rect.row,
+        originCol: rect.column,
+        colSpan: rect.colSpan,
+        rowSpan: rect.rowSpan,
+        area: rect.colSpan * rect.rowSpan,
+        listIndex,
+      });
+    } else {
+      markGridSlotOccupied(
+        occupied,
+        rect.row,
+        rect.column,
+        rect.colSpan,
+        rect.rowSpan,
+        columns
+      );
+    }
+  });
+
+  // Preserve raw saved anchors of all unchanged placements (including hidden/unresolved/temporarily auto-placed)
+  const forbiddenStarts = new Set([formatCellKey(normalizedTargetCell)]);
+  const placementsSource =
+    Array.isArray(rawPlacements) && rawPlacements.length > 0 ? rawPlacements : pageItems;
+
+  for (const raw of placementsSource) {
+    if (!raw || !isFixedCellCapableKind(raw.kind)) continue;
+    const rawId = getEntryId(raw).trim();
+    if (!rawId) continue;
+    const rawKey = `${raw.kind}:${rawId}`;
+    if (rawKey === draggedKey || affectedKeySet.has(rawKey)) continue;
+    const savedCell = normalizePlacementCell(raw.cell, raw.kind);
+    if (savedCell) {
+      forbiddenStarts.add(formatCellKey(savedCell));
+    }
+  }
+
+  // Also cover any renderable item with a saved cell not present in rawPlacements
+  if (Array.isArray(rawPlacements) && rawPlacements.length > 0) {
+    for (const item of otherItems) {
+      if (!isFixedCellCapableKind(item.kind)) continue;
+      const itemKey = getEntryKey(item);
+      if (!itemKey || affectedKeySet.has(itemKey)) continue;
+      const savedCell = normalizePlacementCell(item.cell, item.kind);
+      if (savedCell) {
+        forbiddenStarts.add(formatCellKey(savedCell));
+      }
+    }
+  }
+
+  // Target cell itself cannot collide with an unchanged placement's preserved saved anchor
+  const targetCellKey = formatCellKey(normalizedTargetCell);
+  let targetConflictsSavedAnchor = false;
+  for (const raw of placementsSource) {
+    if (!raw || !isFixedCellCapableKind(raw.kind)) continue;
+    const rawId = getEntryId(raw).trim();
+    if (!rawId) continue;
+    const rawKey = `${raw.kind}:${rawId}`;
+    if (rawKey === draggedKey || affectedKeySet.has(rawKey)) continue;
+    const savedCell = normalizePlacementCell(raw.cell, raw.kind);
+    if (savedCell && formatCellKey(savedCell) === targetCellKey) {
+      targetConflictsSavedAnchor = true;
+      break;
+    }
+  }
+  if (!targetConflictsSavedAnchor && Array.isArray(rawPlacements) && rawPlacements.length > 0) {
+    for (const item of otherItems) {
+      if (!isFixedCellCapableKind(item.kind)) continue;
+      const itemKey = getEntryKey(item);
+      if (!itemKey || affectedKeySet.has(itemKey)) continue;
+      const savedCell = normalizePlacementCell(item.cell, item.kind);
+      if (savedCell && formatCellKey(savedCell) === targetCellKey) {
+        targetConflictsSavedAnchor = true;
+        break;
+      }
+    }
+  }
+  if (targetConflictsSavedAnchor) {
+    return null;
+  }
+
+  if (affectedPins.length === 0) {
+    return { targetRect, moves: [] };
+  }
+
+  // Relocate larger cards first for packing stability, breaking ties by original page order
+  const pinsToRelocate = affectedPins.slice().sort((a, b) => {
+    if (b.area !== a.area) return b.area - a.area;
+    if (b.colSpan !== a.colSpan) return b.colSpan - a.colSpan;
+    if (b.rowSpan !== a.rowSpan) return b.rowSpan - a.rowSpan;
+    return a.listIndex - b.listIndex;
+  });
+
+  const relocatedByKey = new Map();
+
+  for (const pin of pinsToRelocate) {
+    const maxStartRow = Math.min(MAX_CELL_ROW, maxRows - pin.rowSpan);
+    const maxStartCol = Math.min(MAX_CELL_COLUMN, columns - pin.colSpan);
+    if (maxStartRow < 0 || maxStartCol < 0) {
+      return null;
+    }
+
+    let bestCell = null;
+    let bestDist = Infinity;
+
+    for (let r = 0; r <= maxStartRow; r += 1) {
+      for (let c = 0; c <= maxStartCol; c += 1) {
+        const candidateKey = `${r},${c}`;
+        if (forbiddenStarts.has(candidateKey)) continue;
+        if (doesGridSlotCollide(occupied, r, c, pin.colSpan, pin.rowSpan, columns)) continue;
+
+        const dist = Math.abs(r - pin.originRow) + Math.abs(c - pin.originCol);
+        if (
+          dist < bestDist ||
+          (dist === bestDist &&
+            bestCell &&
+            (r < bestCell.row || (r === bestCell.row && c < bestCell.column)))
+        ) {
+          bestDist = dist;
+          bestCell = { row: r, column: c };
+        }
+      }
+    }
+
+    if (!bestCell) {
+      return null;
+    }
+
+    markGridSlotOccupied(occupied, bestCell.row, bestCell.column, pin.colSpan, pin.rowSpan, columns);
+    forbiddenStarts.add(formatCellKey(bestCell));
+    relocatedByKey.set(pin.key, bestCell);
+  }
+
+  // Emit moves in deterministic original page order for displaced other cards
+  const moves = affectedPins.map((pin) => ({
+    kind: pin.kind,
+    id: pin.id,
+    cell: relocatedByKey.get(pin.key),
+  }));
+
+  return {
+    targetRect,
+    moves,
+  };
+}
+
 /**
  * Simulates CSS Grid row-flow placement (grid-auto-flow: row, NOT dense)
- * to calculate exact unit consumption including end-of-row wrapping and multi-row span occupancy.
+ * to calculate exact unit consumption including end-of-row wrapping, multi-row span occupancy,
+ * and active fixed cells when `metrics.maxRows` (or viewport height) is present.
  */
 export function measureGridFlowRows(items = [], metrics = {}) {
+  const list = Array.isArray(items) ? items : [];
   const safeCols = Math.max(1, Number(metrics?.columns) || 6);
+  const hasBoundedRows =
+    Number(metrics?.maxRows) > 0 ||
+    (metrics?.availableGridHeight && metrics?.rowHeight) ||
+    Number(metrics?.maxUnitsPerView || metrics?.maxVisibleCompactUnits) > 0;
+  const fixedCells = hasBoundedRows
+    ? getFixedCellsForPage(list, { ...metrics, columns: safeCols })
+    : new Map();
   const occupied = new Set();
+
+  for (const rect of fixedCells.values()) {
+    markGridSlotOccupied(occupied, rect.row, rect.column, rect.colSpan, rect.rowSpan, safeCols);
+  }
+
   let cursorRow = 0;
   let cursorCol = 0;
   let totalRows = 0;
   const positions = [];
 
-  for (const item of items) {
+  for (const item of list) {
+    const key = getEntryKey(item);
+    const fixedRect = key ? fixedCells.get(key) : null;
+    if (fixedRect) {
+      positions.push({
+        item,
+        row: fixedRect.row,
+        col: fixedRect.column,
+        span: fixedRect.colSpan,
+        colSpan: fixedRect.colSpan,
+        rowSpan: fixedRect.rowSpan,
+        fixed: true,
+      });
+      totalRows = Math.max(totalRows, fixedRect.row + fixedRect.rowSpan);
+      continue;
+    }
+
     const { colSpan, rowSpan } = getWidgetGridSpan(item, { ...metrics, columns: safeCols });
     const span = Math.min(safeCols, Math.max(1, colSpan));
     const rSpan = Math.max(1, rowSpan);
@@ -358,6 +886,7 @@ export function measureGridFlowRows(items = [], metrics = {}) {
       span,
       colSpan: span,
       rowSpan: rSpan,
+      fixed: false,
     });
 
     totalRows = Math.max(totalRows, slot.row + rSpan);
@@ -372,6 +901,7 @@ export function measureGridFlowRows(items = [], metrics = {}) {
   return {
     totalRows,
     positions,
+    fixedCells,
   };
 }
 
@@ -392,33 +922,46 @@ export function packCategoryItemsIntoViews(
 ) {
   const list = Array.isArray(items) ? items : [];
   const columns = Math.max(1, Number(metrics?.columns) || 6);
-  const computedMaxRows =
-    Number(metrics?.maxRows) > 0
-      ? Math.floor(Number(metrics.maxRows))
-      : metrics?.availableGridHeight && metrics?.rowHeight
-        ? Math.floor(
-            (Number(metrics.availableGridHeight) + Number(metrics.rowGap || 0)) /
-              (Number(metrics.rowHeight) + Number(metrics.rowGap || 0))
-          )
-        : Math.floor((Number(metrics?.maxUnitsPerView || metrics?.maxVisibleCompactUnits) || 36) / columns);
-  const maxRows = Math.max(1, computedMaxRows);
+  const maxRows = resolveMetricsMaxRows(metrics, columns);
   const effectiveMetrics = { ...metrics, columns, maxRows };
+  const activeFixedCells = getFixedCellsForPage(list, effectiveMetrics);
 
   if (metrics?.effectiveMode !== DISPLAY_MODES.COMFORT) {
     const visibleItems = [];
     const overflowItems = [];
     const occupied = new Set();
+
+    for (const rect of activeFixedCells.values()) {
+      markGridSlotOccupied(occupied, rect.row, rect.column, rect.colSpan, rect.rowSpan, columns);
+    }
+
     let cursorRow = 0;
     let cursorCol = 0;
+    let capacityExhausted = false;
 
     for (const entry of list) {
-      if (overflowItems.length > 0) {
+      const key = getEntryKey(entry);
+      if (key && activeFixedCells.has(key)) {
+        visibleItems.push(entry);
+        continue;
+      }
+
+      const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
+      const requiredCols = getIntrinsicRequiredColSpan(entry, effectiveMetrics);
+      const span = Math.min(columns, Math.max(1, colSpan));
+      const rSpan = Math.max(1, rowSpan);
+
+      // Intrinsically unfit items (e.g. a 2×2 site, currency card, or square-minimum weather/calendar
+      // in a <2-row or <2-col viewport) go to 查看全部 without hiding remaining items that fit.
+      if (rSpan > maxRows || requiredCols > columns) {
         overflowItems.push(entry);
         continue;
       }
-      const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
-      const span = Math.min(columns, Math.max(1, colSpan));
-      const rSpan = Math.max(1, rowSpan);
+      // Normal overflow suffix: once a fitting auto item runs out of capacity, later auto items overflow
+      if (capacityExhausted) {
+        overflowItems.push(entry);
+        continue;
+      }
 
       const slot = findNextGridSlot(occupied, cursorRow, cursorCol, span, rSpan, columns);
       if (slot.row + rSpan <= maxRows) {
@@ -431,6 +974,7 @@ export function packCategoryItemsIntoViews(
           cursorCol = 0;
         }
       } else {
+        capacityExhausted = true;
         overflowItems.push(entry);
       }
     }
@@ -443,6 +987,7 @@ export function packCategoryItemsIntoViews(
         subViewIndex: 0,
         subViewCount: 1,
         items: visibleItems,
+        fixedCells: activeFixedCells,
         allCategoryItems: list,
         overflowItems,
         isTemporarySubView: false,
@@ -450,7 +995,7 @@ export function packCategoryItemsIntoViews(
     ];
   }
 
-  // Comfort mode: pack into temporary sub-views by row capacity
+  // Comfort mode: pack into temporary sub-views by row capacity; only sub-view 0 reserves fixed cells
   const maxRowsPerView = maxRows;
 
   if (list.length === 0) {
@@ -462,6 +1007,7 @@ export function packCategoryItemsIntoViews(
         subViewIndex: 0,
         subViewCount: 1,
         items: [],
+        fixedCells: new Map(),
         allCategoryItems: [],
         overflowItems: [],
         isTemporarySubView: false,
@@ -469,44 +1015,183 @@ export function packCategoryItemsIntoViews(
     ];
   }
 
-  const chunks = [];
-  let currentChunk = [];
-  let occupied = new Set();
-  let cursorRow = 0;
-  let cursorCol = 0;
-
+  const firstScreenFixedEntries = [];
+  const autoEntries = [];
   for (const entry of list) {
-    const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
-    const span = Math.min(columns, Math.max(1, colSpan));
-    const rSpan = Math.max(1, rowSpan);
-
-    const slot = findNextGridSlot(occupied, cursorRow, cursorCol, span, rSpan, columns);
-
-    if (slot.row + rSpan > maxRowsPerView && currentChunk.length > 0) {
-      chunks.push(currentChunk);
-      currentChunk = [entry];
-      occupied = new Set();
-      markGridSlotOccupied(occupied, 0, 0, span, rSpan, columns);
-      cursorRow = 0;
-      cursorCol = span;
-      if (cursorCol >= columns) {
-        cursorRow = 1;
-        cursorCol = 0;
-      }
+    const key = getEntryKey(entry);
+    if (key && activeFixedCells.has(key)) {
+      firstScreenFixedEntries.push(entry);
     } else {
-      currentChunk.push(entry);
-      markGridSlotOccupied(occupied, slot.row, slot.col, span, rSpan, columns);
-      cursorRow = slot.row;
-      cursorCol = slot.col + span;
-      if (cursorCol >= columns) {
-        cursorRow += 1;
-        cursorCol = 0;
-      }
+      autoEntries.push(entry);
     }
   }
 
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk);
+  if (activeFixedCells.size === 0) {
+    const chunks = [];
+    const neverFitItems = [];
+    let currentChunk = [];
+    let occupied = new Set();
+    let cursorRow = 0;
+    let cursorCol = 0;
+
+    for (const entry of list) {
+      const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
+      const requiredCols = getIntrinsicRequiredColSpan(entry, effectiveMetrics);
+      const span = Math.min(columns, Math.max(1, colSpan));
+      const rSpan = Math.max(1, rowSpan);
+
+      // Fixed-size / square-minimum cards that can never fit a sub-view go to 查看全部
+      // instead of creating an oversized, clipped sub-view.
+      if (rSpan > maxRowsPerView || requiredCols > columns) {
+        neverFitItems.push(entry);
+        continue;
+      }
+
+      const slot = findNextGridSlot(occupied, cursorRow, cursorCol, span, rSpan, columns);
+
+      if (slot.row + rSpan > maxRowsPerView && currentChunk.length > 0) {
+        chunks.push(currentChunk);
+        currentChunk = [entry];
+        occupied = new Set();
+        markGridSlotOccupied(occupied, 0, 0, span, rSpan, columns);
+        cursorRow = 0;
+        cursorCol = span;
+        if (cursorCol >= columns) {
+          cursorRow = 1;
+          cursorCol = 0;
+        }
+      } else {
+        currentChunk.push(entry);
+        markGridSlotOccupied(occupied, slot.row, slot.col, span, rSpan, columns);
+        cursorRow = slot.row;
+        cursorCol = slot.col + span;
+        if (cursorCol >= columns) {
+          cursorRow += 1;
+          cursorCol = 0;
+        }
+      }
+    }
+
+    if (currentChunk.length > 0 || chunks.length === 0) {
+      chunks.push(currentChunk);
+    }
+
+    const subViewCount = chunks.length;
+    return chunks.map((chunkItems, idx) => ({
+      viewId: `${pageId}__view_${idx}`,
+      pageId,
+      pageTitle,
+      subViewIndex: idx,
+      subViewCount,
+      items: chunkItems,
+      fixedCells: new Map(),
+      allCategoryItems: list,
+      overflowItems: neverFitItems.slice(),
+      isTemporarySubView: subViewCount > 1,
+    }));
+  }
+
+  // Sub-view 0 has active fixed entries reserved; pack auto entries around them first, then subsequent sub-views normally
+  const neverFitItems = [];
+  const firstScreenAcceptedKeys = new Set(firstScreenFixedEntries.map((entry) => getEntryKey(entry)));
+  const firstScreenOccupied = new Set();
+  for (const rect of activeFixedCells.values()) {
+    markGridSlotOccupied(
+      firstScreenOccupied,
+      rect.row,
+      rect.column,
+      rect.colSpan,
+      rect.rowSpan,
+      columns
+    );
+  }
+
+  const remainingForLaterViews = [];
+  let firstCursorRow = 0;
+  let firstCursorCol = 0;
+  let spilledFromFirstScreen = false;
+
+  for (const entry of autoEntries) {
+    const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
+    const requiredCols = getIntrinsicRequiredColSpan(entry, effectiveMetrics);
+    const span = Math.min(columns, Math.max(1, colSpan));
+    const rSpan = Math.max(1, rowSpan);
+
+    if (rSpan > maxRowsPerView || requiredCols > columns) {
+      neverFitItems.push(entry);
+      continue;
+    }
+
+    if (spilledFromFirstScreen) {
+      remainingForLaterViews.push(entry);
+      continue;
+    }
+
+    const slot = findNextGridSlot(
+      firstScreenOccupied,
+      firstCursorRow,
+      firstCursorCol,
+      span,
+      rSpan,
+      columns
+    );
+    if (slot.row + rSpan <= maxRowsPerView) {
+      firstScreenAcceptedKeys.add(getEntryKey(entry));
+      markGridSlotOccupied(firstScreenOccupied, slot.row, slot.col, span, rSpan, columns);
+      firstCursorRow = slot.row;
+      firstCursorCol = slot.col + span;
+      if (firstCursorCol >= columns) {
+        firstCursorRow += 1;
+        firstCursorCol = 0;
+      }
+    } else {
+      spilledFromFirstScreen = true;
+      remainingForLaterViews.push(entry);
+    }
+  }
+
+  // Keep original placement order within sub-view 0 for all items belonging to sub-view 0
+  const firstChunk = list.filter((entry) => firstScreenAcceptedKeys.has(getEntryKey(entry)));
+  const chunks = [firstChunk];
+
+  if (remainingForLaterViews.length > 0) {
+    let currentChunk = [];
+    let occupied = new Set();
+    let cursorRow = 0;
+    let cursorCol = 0;
+
+    for (const entry of remainingForLaterViews) {
+      const { colSpan, rowSpan } = getWidgetGridSpan(entry, effectiveMetrics);
+      const span = Math.min(columns, Math.max(1, colSpan));
+      const rSpan = Math.max(1, rowSpan);
+      const slot = findNextGridSlot(occupied, cursorRow, cursorCol, span, rSpan, columns);
+
+      if (slot.row + rSpan > maxRowsPerView && currentChunk.length > 0) {
+        chunks.push(currentChunk);
+        currentChunk = [entry];
+        occupied = new Set();
+        markGridSlotOccupied(occupied, 0, 0, span, rSpan, columns);
+        cursorRow = 0;
+        cursorCol = span;
+        if (cursorCol >= columns) {
+          cursorRow = 1;
+          cursorCol = 0;
+        }
+      } else {
+        currentChunk.push(entry);
+        markGridSlotOccupied(occupied, slot.row, slot.col, span, rSpan, columns);
+        cursorRow = slot.row;
+        cursorCol = slot.col + span;
+        if (cursorCol >= columns) {
+          cursorRow += 1;
+          cursorCol = 0;
+        }
+      }
+    }
+
+    if (currentChunk.length > 0) {
+      chunks.push(currentChunk);
+    }
   }
 
   const subViewCount = chunks.length;
@@ -517,8 +1202,9 @@ export function packCategoryItemsIntoViews(
     subViewIndex: idx,
     subViewCount,
     items: chunkItems,
+    fixedCells: idx === 0 ? activeFixedCells : new Map(),
     allCategoryItems: list,
-    overflowItems: [],
+    overflowItems: neverFitItems.slice(),
     isTemporarySubView: subViewCount > 1,
   }));
 }
@@ -602,10 +1288,26 @@ export function resolveViewDropBeforeAnchor({
     };
   }
 
-  // If compact mode has hidden overflow items and user drops at visible tail, insert before first overflow item
+  // If hidden overflow items exist and user drops at the visible tail, insert before the first overflow
+  // item that truly trails the last visible item (never-fit items may sit ahead of visible ones).
   if (Array.isArray(view.overflowItems) && view.overflowItems.length > 0) {
+    const ordered = Array.isArray(view.allCategoryItems) ? view.allCategoryItems : [];
+    const indexOfEntry = (entry) => {
+      const direct = ordered.indexOf(entry);
+      if (direct !== -1) return direct;
+      const entryId = getEntryId(entry);
+      return ordered.findIndex((e) => e && e.kind === entry.kind && getEntryId(e) === entryId);
+    };
+    const visibleList = Array.isArray(view.items) ? view.items : [];
+    let lastVisibleIdx = -1;
+    for (const entry of visibleList) {
+      if (entry.kind === draggedKind && getEntryId(entry) === draggedId) continue;
+      lastVisibleIdx = Math.max(lastVisibleIdx, indexOfEntry(entry));
+    }
     const firstOverflow = view.overflowItems.find(
-      (entry) => !(entry.kind === draggedKind && getEntryId(entry) === draggedId)
+      (entry) =>
+        !(entry.kind === draggedKind && getEntryId(entry) === draggedId) &&
+        (ordered.length === 0 || indexOfEntry(entry) > lastVisibleIdx)
     );
     if (firstOverflow) {
       return {

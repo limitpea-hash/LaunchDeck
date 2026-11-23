@@ -5,31 +5,68 @@ const WIDGET_REV_KEY = 'ios18_widgets_revision_v1';
 const WIDGET_OUTBOX_KEY = 'ios18_widgets_outbox_v1';
 
 export const WIDGET_SIZES = Object.freeze({
+  SINGLE: 'single',
   COMPACT: 'compact',
   SQUARE: 'square',
-  WIDE: 'wide',
+  LANDSCAPE: 'landscape',
+  TALL: 'tall',
+  LARGE: 'large',
+  FULL: 'full',
+  STRIP: 'strip',
 });
 
 export const DEFAULT_WIDGET_SIZE = WIDGET_SIZES.COMPACT;
 
 export const ALLOWED_WIDGET_SIZES = Object.freeze([
+  WIDGET_SIZES.SINGLE,
   WIDGET_SIZES.COMPACT,
   WIDGET_SIZES.SQUARE,
-  WIDGET_SIZES.WIDE,
+  WIDGET_SIZES.LANDSCAPE,
+  WIDGET_SIZES.TALL,
+  WIDGET_SIZES.LARGE,
+  WIDGET_SIZES.FULL,
+  WIDGET_SIZES.STRIP,
 ]);
 
+/** Retired size values that may still appear in saved state, backups or widget packages. */
+export const LEGACY_WIDGET_SIZES = Object.freeze(['wide']);
+
 export const DEFAULT_WIDGET_DEFINITIONS = [
-  { type: 'clock-weather', title: '时钟与天气', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: { showSeconds: true }, capabilities: ['clock', 'weather', 'device-settings'] },
-  { type: 'focus-timer', title: '专注计时', version: 1, sizes: ['compact', 'square'], defaultConfig: { workMinutes: 25, breakMinutes: 5 }, capabilities: ['local-timer'] },
-  { type: 'quick-note', title: '速记', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: {}, capabilities: ['shared-note'] },
-  { type: 'todo', title: '待办清单', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: { hideCompleted: false }, capabilities: ['shared-todos'] },
-  { type: 'calendar', title: '月历', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: { weekStartsOn: 1 }, capabilities: ['clock'] },
-  { type: 'world-clock', title: '世界时钟', version: 1, sizes: ['compact', 'square', 'wide'], defaultConfig: { zones: [
+  { type: 'clock-weather', title: '时钟与天气', version: 1, sizes: ['square', 'landscape'], defaultSize: 'square', legacySizes: { compact: 'square', tall: 'square', wide: 'square' }, defaultConfig: { showSeconds: true }, capabilities: ['clock', 'weather', 'device-settings'] },
+  { type: 'focus-timer', title: '专注计时', version: 1, sizes: ['compact', 'square'], legacySizes: { wide: 'compact' }, defaultConfig: { workMinutes: 25, breakMinutes: 5 }, capabilities: ['local-timer'] },
+  { type: 'quick-note', title: '速记', version: 1, sizes: ['compact', 'square'], legacySizes: { wide: 'square' }, defaultConfig: {}, capabilities: ['shared-note'] },
+  { type: 'todo', title: '待办清单', version: 1, sizes: ['compact', 'square', 'tall'], legacySizes: { wide: 'tall' }, defaultConfig: { hideCompleted: false }, capabilities: ['shared-todos'] },
+  { type: 'calendar', title: '月历', version: 1, sizes: ['square', 'full'], defaultSize: 'square', legacySizes: { compact: 'square', wide: 'square', large: 'full' }, defaultConfig: { weekStartsOn: 1, marks: [] }, capabilities: ['clock', 'shared-todos', 'calendar-marks', 'cn-holidays'] },
+  { type: 'world-clock', title: '世界时钟', version: 1, sizes: ['compact', 'square', 'tall'], legacySizes: { wide: 'tall' }, defaultConfig: { zones: [
     { label: '上海', timeZone: 'Asia/Shanghai' },
     { label: '伦敦', timeZone: 'Europe/London' },
     { label: '纽约', timeZone: 'America/New_York' },
   ] }, capabilities: ['clock'] },
+  // Daily widgets: placed on demand via “添加 → 小组件”, never part of the default layout.
+  { type: 'weather-badge', title: '迷你天气', version: 1, sizes: ['single', 'compact', 'square'], defaultSize: 'single', defaultEnabled: false, defaultConfig: {}, capabilities: ['weather'] },
+  { type: 'date-tile', title: '今日日期', version: 1, sizes: ['single', 'square'], defaultSize: 'single', defaultEnabled: false, defaultConfig: {}, capabilities: ['clock'] },
+  { type: 'focus-launcher', title: '一键专注', version: 1, sizes: ['single', 'compact'], defaultSize: 'single', defaultEnabled: false, defaultConfig: {}, capabilities: ['local-timer'] },
+  { type: 'countdown', title: '日子倒数', version: 1, sizes: ['single', 'compact', 'square'], defaultSize: 'single', defaultEnabled: false, defaultConfig: { title: '倒计时', targetDate: null }, capabilities: ['clock'] },
+  { type: 'habits', title: '习惯打卡', version: 1, sizes: ['tall', 'square'], defaultSize: 'tall', defaultEnabled: false, defaultConfig: { habits: [] }, capabilities: ['clock'] },
+  { type: 'today-dashboard', title: '今日面板', version: 1, sizes: ['large', 'square'], defaultSize: 'large', defaultEnabled: false, defaultConfig: {}, capabilities: ['clock', 'weather', 'shared-todos'] },
+  { type: 'weather-strip', title: '逐小时天气', version: 1, sizes: ['strip', 'compact'], defaultSize: 'strip', legacySizes: { wide: 'strip' }, defaultEnabled: false, defaultConfig: {}, capabilities: ['weather'] },
+  { type: 'currency-converter', title: '汇率换算', version: 1, sizes: ['square'], defaultSize: 'square', legacySizes: { single: 'square', compact: 'square' }, defaultEnabled: false, defaultConfig: { base: 'CNY', quote: 'USD' }, capabilities: ['exchange-rate'] },
+  // Import-only: rows exist only after a user imports a local widget package (never shown as a generic add entry).
+  { type: 'imported-card', title: '导入组件', version: 1, sizes: ['single', 'compact', 'square'], defaultSize: 'square', legacySizes: { wide: 'square' }, defaultEnabled: false, importOnly: true, defaultConfig: { type: 'text', title: '导入组件', text: '在设置中重新导入组件包', icon: 'note', palette: 'slate', layout: 'stacked' }, capabilities: ['clock', 'weather', 'exchange-rate'] },
 ];
+
+/** legacySizes map for a type (registry first, builtin fallback when the registry omits it). */
+export function getLegacySizeMapForWidgetType(type, definitions = DEFAULT_WIDGET_DEFINITIONS) {
+  const defs = Array.isArray(definitions) && definitions.length > 0 ? definitions : DEFAULT_WIDGET_DEFINITIONS;
+  const def = defs.find(d => d && d.type === type);
+  const builtin = DEFAULT_WIDGET_DEFINITIONS.find(d => d.type === type);
+  const map = def?.legacySizes && typeof def.legacySizes === 'object' ? def.legacySizes : builtin?.legacySizes;
+  return map && typeof map === 'object' ? map : {};
+}
+
+export function isDefaultEnabledWidgetDefinition(def) {
+  return Boolean(def && typeof def.type === 'string' && def.defaultEnabled !== false);
+}
 
 export function getSupportedSizesForWidgetType(type, definitions = DEFAULT_WIDGET_DEFINITIONS) {
   const defs = Array.isArray(definitions) && definitions.length > 0
@@ -37,36 +74,71 @@ export function getSupportedSizesForWidgetType(type, definitions = DEFAULT_WIDGE
     : DEFAULT_WIDGET_DEFINITIONS;
   const def = defs.find(d => d && d.type === type) || DEFAULT_WIDGET_DEFINITIONS.find(d => d.type === type);
   const rawSizes = Array.isArray(def?.sizes) ? def.sizes : [];
-  const filtered = rawSizes.filter(s => ALLOWED_WIDGET_SIZES.includes(s));
+  const filtered = rawSizes.filter((s, i) => ALLOWED_WIDGET_SIZES.includes(s) && rawSizes.indexOf(s) === i);
   if (filtered.length > 0) {
     return filtered;
   }
-  return type === 'focus-timer' ? ['compact', 'square'] : ['compact', 'square', 'wide'];
+  return type === 'focus-timer' ? ['compact', 'square'] : ['compact', 'square'];
+}
+
+export function getDefaultSizeForWidgetType(type, definitions = DEFAULT_WIDGET_DEFINITIONS) {
+  if (!type) return null;
+  const defs = Array.isArray(definitions) && definitions.length > 0
+    ? definitions
+    : DEFAULT_WIDGET_DEFINITIONS;
+  const matchedDef = defs.find(d => d && d.type === type);
+  const builtinDef = DEFAULT_WIDGET_DEFINITIONS.find(d => d.type === type);
+  const rawDefaultSize =
+    matchedDef && Object.hasOwn(matchedDef, 'defaultSize')
+      ? matchedDef.defaultSize
+      : builtinDef?.defaultSize;
+  const candidate = typeof rawDefaultSize === 'string' ? rawDefaultSize.trim() : '';
+  if (!ALLOWED_WIDGET_SIZES.includes(candidate)) {
+    return null;
+  }
+  const supported = getSupportedSizesForWidgetType(type, defs);
+  return supported.includes(candidate) ? candidate : null;
 }
 
 export function normalizeWidgetSize(rawSize, type = null, definitions = DEFAULT_WIDGET_DEFINITIONS) {
   const candidate = typeof rawSize === 'string' ? rawSize.trim() : '';
-  if (!ALLOWED_WIDGET_SIZES.includes(candidate)) {
-    return DEFAULT_WIDGET_SIZE;
-  }
   if (type) {
     const supported = getSupportedSizesForWidgetType(type, definitions);
-    if (!supported.includes(candidate)) {
+    if (ALLOWED_WIDGET_SIZES.includes(candidate) && supported.includes(candidate)) {
+      return candidate;
+    }
+    // Retired / per-type legacy values (e.g. wide → tall, currency compact → square)
+    const legacyTarget = candidate ? getLegacySizeMapForWidgetType(type, definitions)[candidate] : undefined;
+    if (typeof legacyTarget === 'string' && supported.includes(legacyTarget)) {
+      return legacyTarget;
+    }
+    // Unsupported / missing: old types keep historical compact fallback; daily types whose
+    // registry omits compact fall back to their registry default (first listed size).
+    if (supported.includes(DEFAULT_WIDGET_SIZE)) {
       return DEFAULT_WIDGET_SIZE;
     }
+    return getDefaultSizeForWidgetType(type, definitions) || supported[0] || DEFAULT_WIDGET_SIZE;
+  }
+  if (!ALLOWED_WIDGET_SIZES.includes(candidate)) {
+    return DEFAULT_WIDGET_SIZE;
   }
   return candidate;
 }
 
 export function createDefaultWidgetState(definitions = DEFAULT_WIDGET_DEFINITIONS) {
+  const defaultDefs = (Array.isArray(definitions) ? definitions : []).filter(isDefaultEnabledWidgetDefinition);
   return {
-    layout: definitions.map((def, order) => ({
-      id: def.type,
-      type: def.type,
-      enabled: true,
-      order,
-      config: structuredClone(def.defaultConfig),
-    })),
+    layout: defaultDefs.map((def, order) => {
+      const defaultSize = getDefaultSizeForWidgetType(def?.type, definitions);
+      return {
+        id: def.type,
+        type: def.type,
+        enabled: true,
+        order,
+        ...(defaultSize ? { size: defaultSize } : {}),
+        config: structuredClone(def.defaultConfig),
+      };
+    }),
     todos: [],
     desktop: null,
   };

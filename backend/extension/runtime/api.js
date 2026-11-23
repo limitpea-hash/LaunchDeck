@@ -1,9 +1,12 @@
 import { HttpError } from '../../validation.js';
 import { widgetDefinitions } from '../../features/widgets.js';
+import { EXCHANGE_RATE_ORIGIN } from '../../features/currencies.js';
+import { createExchangeRateService } from '../../features/exchange-rates.js';
 import { clockSnapshot, validateEnvironmentInput } from '../../features/settings.js';
 import { check, timeZone } from '../../features/schema.js';
 import { createLocalDocuments } from './documents.js';
 import { browserFaviconUrl, faviconPageUrl } from './favicons.js';
+import { createExtensionNotificationHandler } from './notifications.js';
 
 export const RPC_CHANNEL = 'launchdeck-extension-api-v1';
 export const LEGACY_RPC_CHANNEL = 'agy-extension-api-v1';
@@ -22,8 +25,17 @@ function numeric(url, key) {
   return Number(value);
 }
 
-export function createExtensionApi({ storage, environment, extensionId, permissions, now = Date.now }) {
+export function createExtensionApi({ storage, environment, extensionId, permissions, notificationFetch, exchangeRateFetch, now = Date.now }) {
   const documents = createLocalDocuments(storage, { now });
+  const notifications = createExtensionNotificationHandler({ storage, permissions, fetchImpl: notificationFetch, now });
+  const exchangeRates = createExchangeRateService({
+    fetchImpl: exchangeRateFetch, now,
+    async authorize() {
+      if (!await permissions?.contains({ origins: [`${EXCHANGE_RATE_ORIGIN}/*`] })) {
+        throw new HttpError(403, '请先启用联网汇率');
+      }
+    },
+  });
   const rate = new Map();
 
   async function dispatch(request) {
@@ -35,6 +47,10 @@ export function createExtensionApi({ storage, environment, extensionId, permissi
     if (request.body !== undefined && new TextEncoder().encode(JSON.stringify(request.body)).byteLength > (['/api/extension/import', '/api/navigation/import'].includes(url.pathname) ? 2 : 1) * 1024 * 1024) throw new HttpError(413, '请求体过大');
     const body = request.body;
     const path = url.pathname;
+    if (path === '/api/notifications') {
+      query(url, []);
+      return { body: await notifications(method, body) };
+    }
     if (path === '/api/navigation/browser-data') {
       query(url, []);
       if (method !== 'GET') throw new HttpError(405, '请求方法不支持');
@@ -85,6 +101,11 @@ export function createExtensionApi({ storage, environment, extensionId, permissi
       query(url, []);
       if (method !== 'GET') throw new HttpError(405, '请求方法不支持');
       return { body: { schemaVersion: 1, widgets: structuredClone(widgetDefinitions) } };
+    }
+    if (path === '/api/exchange-rate') {
+      query(url, ['base', 'quote']);
+      if (method !== 'GET') throw new HttpError(405, '请求方法不支持');
+      return { body: await exchangeRates.rate({ base: url.searchParams.get('base'), quote: url.searchParams.get('quote') }) };
     }
     if (path === '/api/timezones') {
       query(url, []);

@@ -1,5 +1,5 @@
 import { HttpError, validatePatch } from '../../validation.js';
-import { defaultWidgetState, validateWidgetPatch, validateWidgetDocument } from '../../features/widgets.js';
+import { defaultWidgetState, migrateWidgetSizes, validateWidgetPatch, validateWidgetDocument } from '../../features/widgets.js';
 import { defaultDeviceSettings, validateSettingsPatch } from '../../features/settings.js';
 import { record, check } from '../../features/schema.js';
 import { validateBrowserData } from './backup.js';
@@ -33,7 +33,9 @@ export function createLocalDocuments(storage, { now = Date.now } = {}) {
     for (const kind of ['portal', 'widgets', 'device']) {
       if (!Number.isSafeInteger(saved[kind].revision) || saved[kind].revision < 0) throw new HttpError(503, '本地数据版本损坏，请保留备份后检查');
     }
-    return structuredClone(saved);
+    const all = structuredClone(saved);
+    all.widgets.state = migrateWidgetSizes(all.widgets.state);
+    return all;
   }
 
   function serialize(operation) {
@@ -63,7 +65,8 @@ export function createLocalDocuments(storage, { now = Date.now } = {}) {
         if (kind === 'portal') validatePatch(patch, previous.state === null);
         else if (kind === 'widgets') validateWidgetPatch(patch);
         else validateSettingsPatch(patch);
-        const state = { ...previous.state, ...patch };
+        const merged = { ...previous.state, ...patch };
+        const state = kind === 'widgets' ? migrateWidgetSizes(merged) : merged;
         if (kind === 'widgets') validateWidgetDocument(state, previous.state);
         all[kind] = { revision: previous.revision + 1, state, updatedAt: new Date(now()).toISOString() };
         await saveAll(all);
@@ -116,7 +119,7 @@ export function createLocalDocuments(storage, { now = Date.now } = {}) {
           }
         }
         const all = await readAll();
-        for (const [kind, state] of Object.entries({ portal: input.portal, widgets: input.widgets, device: input.device })) {
+        for (const [kind, state] of Object.entries({ portal: input.portal, widgets: migrateWidgetSizes(input.widgets), device: input.device })) {
           all[kind] = { revision: all[kind].revision + 1, state: structuredClone(state), updatedAt: new Date(now()).toISOString() };
         }
         if (input.browserData !== undefined) {

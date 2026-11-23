@@ -112,7 +112,7 @@ test('render scroll restoration only repairs changed offsets and clamps a shorte
   assert.deepEqual(calls.pop(), [0, 656]);
 });
 
-test('background grid calibration waits until detail and settings close before measuring or rebuilding', () => {
+test('background grid calibration waits until detail and settings close', () => {
   let frame = null;
   let measures = 0;
   const visible = new Set();
@@ -121,6 +121,7 @@ test('background grid calibration waits until detail and settings close before m
     document: { getElementById: id => ({ hidden: !visible.has(id) }) },
     requestAnimationFrame(fn) { frame = fn; return 1; },
     measureActualAvailableGridHeight() { measures++; return null; },
+    measureActualAvailableGridWidth() { measures++; return null; },
   };
   runInNewContext(['isAnyModalOrDetailOpen', 'schedulePostRenderGridCalibration'].map(actualFunction).join('\n'), context);
   const calibrate = () => { context.schedulePostRenderGridCalibration(); frame(); };
@@ -131,5 +132,5 @@ test('background grid calibration waits until detail and settings close before m
   visible.clear(); visible.add('apiConfigModal');
   calibrate(); assert.equal(measures, 0, 'keyboard changes while settings are open must not rebuild the desktop');
   visible.clear();
-  calibrate(); assert.equal(measures, 1, 'normal calibration resumes after the modal closes');
+  calibrate(); assert.equal(measures, 2, 'both dimensions are measured after the modal closes');
 });

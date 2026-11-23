@@ -1,0 +1,750 @@
+/* ===== LaunchDeck summaries: clock-weather (2×2 square & 3×2 landscape), todo (2×3 tall), world-clock (2×3 tall) =====
+   Linked after styles.css. Clock-weather rules target rendered data-widget-size="square" and
+   data-widget-size="landscape" (excluding detail modal). Todo and world-clock preserve 2×3 tall.
+   Sizes are measured on the grid's `widget-summary` size container (the card), so cqi / height
+   queries follow the real card. Reference: desktop 2×2 ≈ 186×186, 3×2 ≈ 284×186; narrow phone 3×2 ≈ 157×105. */
+
+/* ---------- clock & weather shared summary hierarchy (2×2 square & 3×2 landscape) ---------- */
+.ios-widget.widget-clock-weather:is([data-widget-size='square'], [data-widget-size='landscape']):not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 13px 14px 11px;
+}
+
+.ios-widget.widget-clock-weather:is([data-widget-size='square'], [data-widget-size='landscape']):not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .widget-summary-extra.summary-extra-clock-weather {
+  display: flex !important;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+  margin-top: auto;
+  padding-top: 7px;
+  border-top: 1px solid var(--summary-divider);
+  gap: 5px;
+  overflow: hidden;
+  color: var(--summary-ink);
+  font-size: 10px;
+}
+
+.ios-widget.widget-clock-weather:is([data-widget-size='square'], [data-widget-size='landscape']):not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-row {
+  flex: none;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.ios-widget.widget-clock-weather:is([data-widget-size='square'], [data-widget-size='landscape']):not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-meta {
+  display: flex;
+  flex: none;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.widget-clock-weather .compact-cw-city-short {
+  display: none;
+}
+
+.ios-widget.widget-clock-weather:is([data-widget-size='square'], [data-widget-size='landscape']):not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-metrics {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.ios-widget.widget-clock-weather:is([data-widget-size='square'], [data-widget-size='landscape']):not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-footer {
+  flex: none;
+}
+
+/* ---------- clock & weather 2×2 (square): essential time, temp, city, condition & H/L wrap cleanly; no forecasts ---------- */
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+  padding: 12px 13px 10px;
+  gap: 4px;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-hourly {
+  display: none !important;
+}
+
+/* Secondary metrics (体感/湿度/风速) and date/status live in detail modal; 2×2 card keeps essentials spacious */
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-metrics,
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-status {
+  display: none !important;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-range:not([hidden]) ~ .summary-cw-zone {
+  display: none !important;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather[data-has-hourly='true'] .summary-cw-range[hidden] ~ .summary-cw-zone:not([hidden]) {
+  display: inline !important;
+}
+
+/* Time + glyph/temp sit cleanly on the primary row so vertical room goes to wrapping city, condition & H/L */
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 6px;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-time {
+  font-size: clamp(19px, 16.5cqi, 31px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-readout {
+  gap: 4px;
+  line-height: 1.04;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-readout .widget-compact-icon.is-weather {
+  width: clamp(15px, 12cqi, 22px);
+  height: clamp(15px, 12cqi, 22px);
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-temp {
+  font-size: clamp(13.5px, 10.5cqi, 19px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+/* City + condition wrap freely across lines instead of single-line ellipsis crowding */
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-meta {
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  align-content: flex-start;
+  gap: 2px 5px;
+  font-size: clamp(10.5px, 7.2cqi, 12.5px);
+  line-height: 1.28;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-city,
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-cond {
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .widget-summary-extra.summary-extra-clock-weather {
+  margin-top: auto;
+  padding-top: 6px;
+  gap: 2px;
+  overflow: visible;
+}
+
+/* Override styles.css hiding .summary-cw-footer at <=138px / <=122px so today's H/L is always shown */
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-footer {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.22;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-range {
+  font-size: clamp(9.5px, 6.6cqi, 11.5px);
+  line-height: 1.22;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Width-constrained 2×2 cards (<=162px: mobile comfort ~160px & mobile compact ~100–120px):
+   prefer concise city name over full province+city so city + condition fit comfortably */
+@container widget-summary (max-width: 162px) {
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cw-city[data-has-short='true'] > .compact-cw-city-full {
+    display: none;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cw-city[data-has-short='true'] > .compact-cw-city-short {
+    display: inline;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+    padding: 10px 10px 8px;
+    gap: 3px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .widget-summary-extra.summary-extra-clock-weather {
+    padding-top: 4.5px;
+  }
+}
+
+/* Narrow phone 375px / 320px compact 2×2 (~100–138px square): clean proportions, zero clipping */
+@container widget-summary (max-width: 138px) {
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+    padding: 7.5px 8px 6.5px;
+    gap: 2.5px;
+    border-radius: 16px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-row {
+    gap: 2px 4px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-time {
+    font-size: clamp(15.5px, 16cqi, 19px);
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-readout {
+    gap: 3px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 13.5px;
+    height: 13.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-temp {
+    font-size: 12.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-meta {
+    font-size: 9.5px;
+    line-height: 1.22;
+    gap: 1px 4px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .widget-summary-extra.summary-extra-clock-weather {
+    padding-top: 3.5px;
+    gap: 1.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-footer {
+    font-size: 8.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-range {
+    font-size: 9px;
+    line-height: 1.18;
+  }
+}
+
+/* Ultra-narrow 320px compact 2×2 (~100×100px): stack or wrap smoothly so negative/°F temps, city, condition & H/L all fit */
+@container widget-summary (max-width: 112px) {
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+    padding: 6px 6.5px 5.5px;
+    gap: 2px;
+    border-radius: 15px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-time {
+    font-size: 14.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 12px;
+    height: 12px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-temp {
+    font-size: 11.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-meta {
+    font-size: 8.8px;
+    line-height: 1.18;
+    gap: 1px 3px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .widget-summary-extra.summary-extra-clock-weather {
+    padding-top: 2.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-range {
+    font-size: 8.3px;
+    line-height: 1.15;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-footer {
+    font-size: 8px;
+  }
+}
+
+@container widget-summary (max-height: 132px) {
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+    padding: 7px 8px 6px;
+    gap: 2px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-time {
+    font-size: clamp(14.5px, 16cqi, 19px);
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .widget-summary-extra.summary-extra-clock-weather {
+    padding-top: 3px;
+    gap: 1.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-range {
+    font-size: 8.8px;
+  }
+}
+
+/* ---------- clock & weather 3×2 (landscape): live readout above 1-row swipeable hourly strip ---------- */
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-time {
+  font-size: clamp(20px, 13.5cqi, 36px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-readout {
+  gap: 6px;
+  line-height: 1;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-readout .widget-compact-icon.is-weather {
+  width: clamp(16px, 9.5cqi, 26px);
+  height: clamp(16px, 9.5cqi, 26px);
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-temp {
+  font-size: clamp(14px, 8.5cqi, 22px);
+  letter-spacing: -0.02em;
+}
+
+/* Single-row horizontal forecast strip: 7 full equal columns + half of the 8th column initially visible,
+   up to 16 total via horizontal scroll, no mask fading on the half-visible 8th card, hidden native scrollbars. */
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-hourly {
+  --cw-strip-gap: 3.5px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 7 * var(--cw-strip-gap)) / 7.5);
+  gap: var(--cw-strip-gap);
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 1px 0 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  cursor: grab;
+  border-radius: 9px;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-hourly[data-has-overflow='false'] {
+  cursor: default;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-hourly::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-hourly.is-dragging {
+  cursor: grabbing;
+  scroll-snap-type: none;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-hourly:focus-visible {
+  outline: 2px solid var(--summary-accent, #7ad3ff);
+  outline-offset: 1px;
+}
+
+/* Override .springboard-viewport .ios-widget * { touch-action: pinch-zoom } when not editing */
+body:not(.jiggle-mode) .springboard-viewport .ios-widget.widget-clock-weather [data-widget-horizontal-scroll='true'],
+body:not(.jiggle-mode) .springboard-viewport .ios-widget.widget-clock-weather [data-widget-horizontal-scroll='true'] *,
+body:not(.jiggle-mode) .ios-widget.widget-clock-weather [data-widget-horizontal-scroll='true'],
+body:not(.jiggle-mode) .ios-widget.widget-clock-weather [data-widget-horizontal-scroll='true'] * {
+  touch-action: pan-x !important;
+}
+
+/* Default hour label format: show full HH:mm on wide cards, compact 2-digit hour (e.g. 16) on <= 325px cards */
+.widget-clock-weather .cw-hour-time-short {
+  display: none;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 4.5px 1px;
+  border-radius: 8px;
+  background: var(--summary-accent-soft);
+  scroll-snap-align: start;
+  overflow: hidden;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-time {
+  font-size: 9.8px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+/* Under <= 325px card width (desktop 3×2 ~284px & phones), use concise 2-digit hour labels (e.g. 16) so 7.5 columns stay spacious;
+   wider 3×2 cards (> 325px) retain full 16:00 labels cleanly. Accessible aria-label always keeps full HH:mm. */
+@container widget-summary (max-width: 325px) {
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-time-full {
+    display: none;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-time-short {
+    display: inline;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-time {
+    font-size: 10.5px;
+    letter-spacing: -0.01em;
+  }
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-icon {
+  width: 17.5px;
+  height: 17.5px;
+}
+
+.ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-temp {
+  font-size: 11.5px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+/* Moderate / short height landscape cards (e.g. <= 162px): compact vertical rhythm so forecast strip fits cleanly */
+@container widget-summary (max-height: 162px) {
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+    padding: 9px 11px 8px;
+    gap: 2.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .widget-summary-extra.summary-extra-clock-weather {
+    padding-top: 5px;
+    gap: 3px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather[data-has-hourly='true'] .summary-cw-footer {
+    display: none !important;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour {
+    padding: 3.5px 1px;
+    gap: 1.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-time {
+    font-size: 10px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-icon {
+    width: 15.5px;
+    height: 15.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-temp {
+    font-size: 11px;
+  }
+}
+
+/* Narrow phone landscape (<= 235px): override --cw-strip-gap only (single grid-auto-columns formula stays shared) */
+@container widget-summary (max-width: 235px) {
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+    padding: 7px 6.5px 6px;
+    gap: 2px;
+    border-radius: 16px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-row {
+    gap: 4px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-time {
+    font-size: clamp(16px, 13cqi, 21px);
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-readout {
+    gap: 3px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-readout .widget-compact-icon.is-weather {
+    width: 14px;
+    height: 14px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-temp {
+    font-size: 13px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-meta {
+    font-size: 9px;
+    line-height: 1.1;
+    gap: 3px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .widget-summary-extra.summary-extra-clock-weather {
+    padding-top: 3px;
+    gap: 2px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather[data-has-hourly='true'] .summary-cw-footer {
+    display: none !important;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-hourly {
+    --cw-strip-gap: 2px;
+    padding: 0 0 1px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour {
+    padding: 2.5px 0.5px;
+    gap: 1px;
+    border-radius: 6px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-time {
+    font-size: 8.5px;
+    letter-spacing: -0.02em;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-icon {
+    width: 12px;
+    height: 12px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-temp {
+    font-size: 9px;
+    letter-spacing: -0.03em;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather :is(.summary-cw-footer, .summary-cw-chip, .summary-cw-range) {
+    font-size: 8.5px;
+  }
+}
+
+/* 375px / 320px phone landscape width (<= 192px, e.g. ~173×105 on 375px, ~148×105 on 320px):
+   tight gap & degree-optional compact temp so negative temperatures (e.g. -18) never clip */
+@container widget-summary (max-width: 192px) {
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+    padding-inline: 5.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-hourly {
+    --cw-strip-gap: 1.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour {
+    padding: 2px 0;
+    border-radius: 5.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-time {
+    font-size: 8px;
+    letter-spacing: -0.02em;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-icon {
+    width: 11.5px;
+    height: 11.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-temp {
+    font-size: 8.5px;
+    letter-spacing: -0.03em;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-deg {
+    display: none;
+  }
+}
+
+/* 320px compact phone landscape width (<= 160px, ~148×105): keep 3-char negative temps (-18) unclipped inside ~18px columns */
+@container widget-summary (max-width: 160px) {
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+    padding-inline: 4.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .summary-cw-hourly {
+    --cw-strip-gap: 1.25px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-time {
+    font-size: 7.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-icon {
+    width: 11px;
+    height: 11px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-temp {
+    font-size: 8px;
+    letter-spacing: -0.04em;
+  }
+}
+
+/* Ultra-short phone landscape height (<= 112px): tighten readout so time + meta + hourly strip all fit inside 105px */
+@container widget-summary (max-height: 112px) {
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather {
+    padding: 5px 5.5px 4.5px;
+    gap: 1.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-time {
+    font-size: 15.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-temp {
+    font-size: 12px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .compact-cw-meta {
+    font-size: 8.5px;
+    line-height: 1.05;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .widget-summary-extra.summary-extra-clock-weather {
+    padding-top: 2px;
+    gap: 1.5px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather[data-has-hourly='false'] .summary-cw-metrics {
+    display: none !important;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour {
+    padding: 1.5px 0;
+    gap: 1px;
+  }
+  .ios-widget.widget-clock-weather[data-widget-size='landscape']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-clock-weather .cw-hour-icon {
+    width: 11.5px;
+    height: 11.5px;
+  }
+}
+
+/* ---------- todo: progress header + a longer pending-first list ---------- */
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo {
+  justify-content: flex-start;
+  gap: 5px;
+  padding: 13px 14px 10px;
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .widget-compact-top {
+  display: flex;
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .widget-compact-primary {
+  flex: none;
+  font-size: clamp(14px, 10cqi, 20px);
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .compact-todo-track {
+  flex: none;
+  height: 4px;
+}
+/* First pending item is already the list's first row. */
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .widget-compact-secondary {
+  display: none;
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-extra-todo {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 3px;
+  gap: 4px;
+  color: var(--summary-ink);
+  font-size: 10px;
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-stats {
+  flex: none;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-item {
+  gap: 7px;
+  padding: 5px 0;
+  font-size: 12px;
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-bullet {
+  width: 13px;
+  height: 13px;
+  font-size: 8.5px;
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-due {
+  font-size: 9.5px;
+}
+.ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-empty {
+  font-size: 11px;
+  line-height: 1.4;
+  padding-top: 2px;
+}
+@container widget-summary (max-height: 170px) {
+  .ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-stats {
+    display: none;
+  }
+}
+@container widget-summary (max-width: 130px) {
+  .ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo {
+    padding: 8px 9px;
+    gap: 3px;
+  }
+  .ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo :is(.summary-todo-stats, .summary-todo-due) {
+    display: none;
+  }
+  .ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-item {
+    gap: 5px;
+    padding: 3px 0;
+    font-size: 10.5px;
+  }
+  .ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-bullet {
+    width: 10px;
+    height: 10px;
+    font-size: 7px;
+  }
+  .ios-widget.widget-todo[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-todo .summary-todo-empty {
+    font-size: 9.5px;
+  }
+}
+
+/* ---------- world clock: cities stacked vertically, time right-aligned ---------- */
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock {
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 13px 14px 10px;
+}
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .widget-compact-top {
+  display: flex;
+}
+/* The two side-by-side 2×1 columns would duplicate the vertical list. */
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .compact-world-rows {
+  display: none;
+}
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-extra-world-clock {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0;
+  gap: 4px;
+  color: var(--summary-ink);
+  font-size: 10px;
+}
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-meta {
+  flex: none;
+  font-size: 9.5px;
+}
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-item {
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-item-left {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-city {
+  max-width: 100%;
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-diff {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 9.5px;
+}
+.ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-time {
+  font-size: clamp(14px, 10cqi, 21px);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+@container widget-summary (max-height: 170px) {
+  .ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-meta {
+    display: none;
+  }
+}
+@container widget-summary (max-width: 130px) {
+  .ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock {
+    padding: 8px 9px;
+    gap: 3px;
+  }
+  .ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-meta {
+    display: none;
+  }
+  .ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-item {
+    gap: 4px;
+    padding: 3px 0;
+  }
+  .ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-city {
+    font-size: 10px;
+  }
+  .ios-widget.widget-world-clock[data-widget-size='tall']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-world-clock .summary-world-diff {
+    font-size: 8.5px;
+  }
+}

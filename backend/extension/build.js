@@ -7,6 +7,8 @@ import { spawnSync } from 'node:child_process';
 export const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 const MARKER = '.launchdeck-generated.json';
 const SOURCE_FILES = ['validation.js', 'features/schema.js', 'features/widgets.js', 'features/settings.js', 'features/provider-data.js',
+  'features/notifications.js', 'features/currencies.js', 'features/exchange-rates.js', 'features/widget-package.js', 'features/upgrade-package.js',
+  'features/china-holidays.js',
   'navigation/schema.js', 'navigation/merge.js', 'navigation/codec.js'];
 
 async function filesBelow(directory, prefix = '') {

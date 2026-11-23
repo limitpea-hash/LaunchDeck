@@ -1,0 +1,108 @@
+/* LaunchDeck page site tiles: optional 2×2 size (page grid only; Dock, folders, search and
+   overflow list stay 1×1). The tile paints a true square aligned to two tracks × two rows. */
+
+.apps-grid.desktop-mixed-grid .app-item[data-site-size="square"],
+.apps-grid.desktop-mixed-grid .app-item-placeholder[data-site-size="square"] {
+  grid-column: span 2;
+  grid-row: span 2;
+  width: var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px))) !important;
+  min-width: 0 !important;
+  max-width: min(100%, var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px)))) !important;
+  height: var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px))) !important;
+  min-height: var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px))) !important;
+  max-height: var(--widget-square-size, calc(var(--grid-row-height, 84px) * 2 + var(--grid-row-gap, 10px))) !important;
+  aspect-ratio: 1 / 1;
+  justify-self: center;
+  align-self: center;
+}
+
+.apps-grid.desktop-mixed-grid .app-item[data-site-size="square"] {
+  /* Larger centred icon, independent of the global Appearance icon size */
+  --compact-icon-size: clamp(40px, calc(var(--widget-square-size, 120px) * 0.56), 120px);
+  position: relative;
+  justify-content: center;
+  gap: clamp(4px, calc(var(--widget-square-size, 120px) * 0.05), 10px);
+}
+
+body .apps-grid.desktop-mixed-grid .app-item[data-site-size="square"] .app-squircle,
+body[data-icon-size] .apps-grid.desktop-mixed-grid .app-item[data-site-size="square"] .app-squircle {
+  width: var(--compact-icon-size);
+  height: var(--compact-icon-size);
+  border-radius: calc(var(--compact-icon-size) * 0.245);
+  flex-shrink: 0;
+}
+
+body .apps-grid.desktop-mixed-grid .app-item[data-site-size="square"] .app-glyph {
+  width: 56%;
+  height: 56%;
+  font-size: calc(var(--compact-icon-size) * 0.36);
+}
+
+body .apps-grid.desktop-mixed-grid .app-item[data-site-size="square"] .app-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+
+body .apps-grid.desktop-mixed-grid .app-item[data-site-size="square"] .app-label,
+body[data-icon-size] .apps-grid.desktop-mixed-grid .app-item[data-site-size="square"] .app-label {
+  display: block;
+  max-width: 100%;
+  padding: 0 4px;
+  font-size: clamp(11px, calc(var(--widget-square-size, 120px) * 0.1), 14px);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Edit-only size toggle (top-right; delete badge stays top-left) */
+.app-item .site-size-toggle {
+  display: none;
+}
+
+body.jiggle-mode .apps-grid.desktop-mixed-grid .app-item .site-size-toggle {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  z-index: 6;
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(10, 132, 255, 0.94);
+  color: #ffffff;
+  font: inherit;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.32);
+  animation: none;
+  touch-action: manipulation !important;
+}
+
+body.jiggle-mode .apps-grid.desktop-mixed-grid .app-item[data-site-size="square"] .site-size-toggle {
+  top: 2px;
+  right: 2px;
+}
+
+body.jiggle-mode .apps-grid.desktop-mixed-grid .app-item .site-size-toggle:focus-visible {
+  outline: 2px solid #64d2ff;
+  outline-offset: 1px;
+}
+
+@media (max-width: 768px) {
+  body.jiggle-mode .apps-grid.desktop-mixed-grid .app-item .site-size-toggle {
+    top: -3px;
+    right: -3px;
+    min-width: 22px;
+    height: 16px;
+    font-size: 8.5px;
+  }
+}

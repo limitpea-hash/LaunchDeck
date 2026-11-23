@@ -1,0 +1,411 @@
+/* LaunchDeck daily small widgets: weather-badge, date-tile, countdown, focus-launcher.
+   Every rule is scoped to .daily-card; surfaces are self-contained so the cards never
+   bleed into the wallpaper. Root box sizing is owned by the grid host (no width/height/aspect here). */
+
+/* ---------- shared surface ---------- */
+.ios-widget.daily-card {
+  --daily-fg: #ffffff;
+  --daily-muted: rgba(255, 255, 255, 0.74);
+  --daily-line: rgba(255, 255, 255, 0.22);
+  --daily-chip: rgba(255, 255, 255, 0.16);
+  --daily-accent: #ffffff;
+  --daily-on-accent: #1c1c1e;
+  --daily-surface: #1c1c1e;
+  --daily-edge: rgba(255, 255, 255, 0.16);
+  container-type: inline-size;
+  container-name: daily;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  contain: paint;
+  border-radius: clamp(12px, 1.6vw, 22px);
+  background: var(--daily-surface);
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 1px var(--daily-edge), 0 6px 18px rgba(0, 0, 0, 0.24);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: var(--daily-fg);
+  padding: clamp(5px, 1vw, 14px);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Weather: vivid deep blue (night: indigo) */
+.ios-widget.daily-card.daily-weather-badge {
+  --daily-surface: linear-gradient(160deg, #2f86ff 0%, #1552d8 46%, #0a2c8a 100%);
+  --daily-on-accent: #0b3aa6;
+}
+.ios-widget.daily-card.daily-weather-badge[data-day-phase='night'] {
+  --daily-surface: linear-gradient(160deg, #3d43a8 0%, #1d2170 52%, #0b0e3a 100%);
+  --daily-on-accent: #1d2170;
+}
+
+/* Date: bright clean paper, coloured month header, card outline is the page */
+.ios-widget.daily-card.daily-date-tile {
+  --daily-surface: linear-gradient(180deg, #ffffff 0%, #f6f4ef 100%);
+  --daily-fg: #1c1c1e;
+  --daily-muted: #6e6e73;
+  --daily-line: rgba(0, 0, 0, 0.12);
+  --daily-chip: rgba(0, 0, 0, 0.05);
+  --daily-accent: #ff3b30;
+  --daily-on-accent: #ffffff;
+  --daily-edge: rgba(0, 0, 0, 0.08);
+  padding: 0;
+}
+.ios-widget.daily-card.daily-date-tile[data-weekend='true'] { --daily-accent: #e8333f; }
+
+/* Countdown: amber → rose, bold white type */
+.ios-widget.daily-card.daily-countdown {
+  --daily-surface: linear-gradient(150deg, #f2780c 0%, #ea4f2a 48%, #d6255f 100%);
+  --daily-muted: rgba(255, 255, 255, 0.88);
+  --daily-on-accent: #c2361c;
+}
+.ios-widget.daily-card.daily-countdown[data-countdown-state='today'] {
+  --daily-surface: linear-gradient(150deg, #ff4f7b 0%, #d81b60 58%, #9b1150 100%);
+  --daily-on-accent: #b0174f;
+}
+.ios-widget.daily-card.daily-countdown[data-countdown-state='past'] {
+  --daily-surface: linear-gradient(150deg, #6c707c 0%, #3e414a 100%);
+  --daily-on-accent: #3e414a;
+}
+
+/* Focus launcher: warm work / cool break */
+.ios-widget.daily-card.daily-focus-launcher {
+  --daily-surface: radial-gradient(130% 110% at 28% 18%, #5c2615 0%, #2b130c 72%);
+  --daily-accent: #ff8a4c;
+  --daily-on-accent: #2b130c;
+}
+.ios-widget.daily-card.daily-focus-launcher[data-focus-phase='break'] {
+  --daily-surface: radial-gradient(130% 110% at 28% 18%, #11505a 0%, #0a2328 72%);
+  --daily-accent: #4fe0c9;
+  --daily-on-accent: #06302f;
+}
+
+/* ---------- helpers ---------- */
+.daily-card .daily-sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.daily-card .daily-roomy { display: none; }
+.daily-card [hidden] { display: none !important; }
+
+/* ---------- summary / detail switching ---------- */
+.daily-card > .daily-summary {
+  display: flex; flex-direction: column; justify-content: center; gap: 4cqi;
+  width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.daily-card > .daily-detail { display: none; }
+.daily-card.widget-in-detail-modal > .daily-summary,
+.widget-in-detail-modal .daily-card > .daily-summary { display: none; }
+.daily-card.widget-in-detail-modal > .daily-detail,
+.widget-in-detail-modal .daily-card > .daily-detail {
+  display: flex; flex-direction: column; gap: 14px; width: 100%; min-width: 0;
+}
+.ios-widget.daily-card.widget-in-detail-modal,
+.widget-in-detail-modal .ios-widget.daily-card {
+  container-type: normal; contain: none; overflow: visible;
+  border-radius: 20px; padding: 20px;
+}
+
+/* ---------- weather badge ---------- */
+.daily-card .daily-summary-weather-badge { align-items: flex-start; }
+.daily-card .daily-wx-main { display: flex; align-items: center; gap: 3cqi; min-width: 0; }
+.daily-card .daily-wx-glyph {
+  display: inline-flex; flex: none; color: #ffffff;
+  filter: drop-shadow(0 1px 2px rgba(0, 20, 80, 0.35));
+}
+.daily-card .daily-wx-glyph svg { width: clamp(18px, 26cqi, 48px); height: auto; }
+.daily-card.daily-weather-badge[data-weather-kind='clear-day'] .daily-wx-glyph,
+.daily-card.daily-weather-badge[data-weather-kind='partly-cloudy-day'] .daily-wx-glyph { color: #ffd60a; }
+.daily-card.daily-weather-badge[data-weather-kind='clear-night'] .daily-wx-glyph { color: #ffe9a8; }
+.daily-card .daily-wx-temp {
+  font-size: clamp(16px, 26cqi, 44px); font-weight: 700; line-height: 1; letter-spacing: -0.03em;
+}
+.daily-card.daily-weather-badge[data-weather-state='loading'] .daily-wx-temp,
+.daily-card.daily-weather-badge[data-weather-state='unavailable'] .daily-wx-temp { color: var(--daily-muted); }
+.daily-card .daily-wx-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; width: 100%; }
+.daily-card .daily-wx-cond, .daily-card .daily-wx-city {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: clamp(10px, 9cqi, 14px); line-height: 1.25;
+}
+.daily-card .daily-wx-cond { font-weight: 600; }
+.daily-card .daily-wx-city { color: var(--daily-muted); }
+.daily-card .daily-wx-glyph.is-hero svg { width: 56px; }
+
+/* ---------- date tile ---------- */
+.daily-card .daily-summary-date-tile { align-items: stretch; justify-content: flex-start; gap: 0; }
+.daily-card .daily-date-page {
+  display: flex; flex-direction: column; flex: 1; min-height: 0; color: var(--daily-fg);
+}
+.daily-card .daily-date-month {
+  flex: none; background: var(--daily-accent); color: var(--daily-on-accent);
+  text-align: center; font-size: clamp(8px, 12cqi, 16px); font-weight: 700;
+  line-height: 1.6; letter-spacing: 0.06em;
+}
+.daily-card .daily-date-body {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0;
+}
+.daily-card .daily-date-day {
+  font-size: clamp(20px, 44cqi, 72px); font-weight: 750; line-height: 0.95; letter-spacing: -0.045em;
+}
+.daily-card .daily-date-week { font-size: clamp(9px, 11cqi, 15px); font-weight: 600; color: var(--daily-muted); line-height: 1.3; }
+.daily-card.daily-date-tile[data-weekend='true'] .daily-date-week { color: var(--daily-accent); }
+.daily-card .daily-date-extra {
+  font-size: clamp(10px, 7cqi, 13px); color: var(--daily-muted); text-align: center; padding-bottom: 7cqi;
+}
+
+/* ---------- countdown ---------- */
+.daily-card .daily-summary-countdown { align-items: flex-start; }
+.daily-card .daily-cd-title {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: clamp(10px, 9cqi, 14px); font-weight: 700; color: var(--daily-muted);
+}
+.daily-card .daily-cd-main { display: flex; flex-direction: column; min-width: 0; max-width: 100%; }
+.daily-card .daily-cd-caption { font-size: clamp(9px, 9cqi, 13px); font-weight: 600; color: var(--daily-muted); line-height: 1.2; }
+.daily-card .daily-cd-figure { display: flex; align-items: baseline; gap: 2cqi; min-width: 0; }
+.daily-card .daily-cd-value {
+  font-size: clamp(20px, 36cqi, 64px); font-weight: 800; line-height: 1; letter-spacing: -0.04em;
+  color: #ffffff; text-shadow: 0 1px 2px rgba(90, 20, 0, 0.28); white-space: nowrap;
+}
+.daily-card.daily-countdown[data-countdown-state='today'] .daily-cd-value { font-size: clamp(16px, 24cqi, 44px); }
+.daily-card.daily-countdown[data-countdown-state='unset'] .daily-cd-value { font-weight: 500; opacity: 0.9; }
+.daily-card .daily-cd-unit { font-size: clamp(10px, 11cqi, 16px); font-weight: 800; }
+.daily-card .daily-cd-date { font-size: clamp(10px, 7.5cqi, 13px); font-weight: 600; color: var(--daily-muted); }
+
+/* ---------- focus launcher ---------- */
+.daily-card .daily-summary-focus-launcher { flex-direction: row; align-items: center; gap: 6cqi; }
+.daily-card .daily-focus-play {
+  position: relative; z-index: 2; pointer-events: auto;
+  flex: none; display: grid; place-items: center;
+  width: clamp(32px, 30cqi, 64px); aspect-ratio: 1; padding: 0; margin: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--daily-fg); cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.daily-card .daily-focus-ring {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(var(--daily-accent) var(--daily-progress, 0%), rgba(255, 255, 255, 0.16) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+}
+.daily-card .daily-focus-icon {
+  position: relative; display: grid; place-items: center; width: 70%; aspect-ratio: 1; border-radius: 50%;
+  background: var(--daily-accent); color: var(--daily-on-accent); pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.daily-card.daily-focus-launcher[data-focus-running='true'] .daily-focus-icon {
+  background: rgba(255, 255, 255, 0.14); color: var(--daily-accent);
+  box-shadow: inset 0 0 0 1.5px var(--daily-accent);
+}
+.daily-card .daily-focus-icon svg { width: 50%; height: 50%; }
+.daily-card .daily-focus-play:hover .daily-focus-icon { transform: scale(1.06); }
+.daily-card .daily-focus-play:active .daily-focus-icon { transform: scale(0.94); }
+.daily-card .daily-focus-play:focus-visible { outline: 2px solid var(--daily-accent); outline-offset: 2px; }
+.daily-card .daily-focus-play:disabled { opacity: 0.45; cursor: not-allowed; }
+.daily-card .daily-focus-meta { display: flex; flex-direction: column; min-width: 0; }
+.daily-card .daily-focus-time {
+  font-size: clamp(14px, 16cqi, 30px); font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; white-space: nowrap;
+}
+.daily-card .daily-focus-phase { font-size: clamp(10px, 8cqi, 13px); color: var(--daily-muted); white-space: nowrap; }
+.daily-card.daily-focus-launcher[data-focus-running='true'] .daily-focus-time { color: var(--daily-accent); }
+
+/* ---------- size: single (1x1) ---------- */
+.ios-widget.daily-card:is([data-widget-size='single'], [data-widget-size='single'] > *):not(.widget-in-detail-modal):not(.daily-date-tile) {
+  padding: clamp(4px, 0.7vw, 10px);
+}
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-optional { display: none; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) > .daily-summary {
+  align-items: center; justify-content: center; text-align: center; gap: 2cqi;
+}
+/* weather 1x1: centred glyph over temp */
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-wx-main { flex-direction: column; gap: 2cqi; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-wx-glyph svg { width: 44cqi; min-width: 16px; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-wx-temp { font-size: max(13px, 32cqi); }
+/* date 1x1: page fills the card */
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-date-page { width: 100%; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-date-month { font-size: max(8px, 15cqi); line-height: 1.5; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-date-day { font-size: max(18px, 48cqi); }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-date-week { font-size: max(8px, 13cqi); }
+/* countdown 1x1: focal number + 天 */
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-cd-main { align-items: center; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-cd-figure { gap: 1cqi; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-cd-value { font-size: max(16px, 44cqi); }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card)[data-cd-digits='4'] .daily-cd-value { font-size: max(13px, 32cqi); }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card):is([data-cd-digits='5'], [data-cd-digits='6'], [data-cd-digits='7']) .daily-cd-value { font-size: max(11px, 24cqi); }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card)[data-countdown-state='today'] .daily-cd-value { font-size: max(13px, 32cqi); }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-cd-caption { font-size: max(8px, 12cqi); }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-cd-unit { font-size: max(9px, 15cqi); }
+/* focus 1x1: big tap target over time */
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-focus-launcher { flex-direction: column; gap: 3cqi; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-focus-play { width: 60cqi; min-width: 28px; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-focus-meta { align-items: center; }
+:is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-focus-time { font-size: max(9px, 19cqi); line-height: 1; }
+
+/* 1x1 desktop (≥72px content): art-directed corner layouts */
+@container daily (min-width: 66px) {
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-weather-badge,
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-countdown {
+    align-items: flex-start; text-align: left;
+  }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-weather-badge .daily-wx-main {
+    align-self: stretch; height: 100%; align-items: flex-start; justify-content: space-between;
+  }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-weather-badge .daily-wx-glyph svg { width: 38cqi; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-weather-badge .daily-wx-temp { font-size: 38cqi; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-countdown .daily-cd-main {
+    align-items: flex-start; align-self: stretch; height: 100%; justify-content: space-between;
+  }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-countdown .daily-cd-value { font-size: 46cqi; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card)[data-cd-digits='4'] .daily-summary-countdown .daily-cd-value { font-size: 34cqi; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card):is([data-cd-digits='5'], [data-cd-digits='6'], [data-cd-digits='7']) .daily-summary-countdown .daily-cd-value { font-size: 26cqi; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card)[data-countdown-state='today'] .daily-summary-countdown .daily-cd-value { font-size: 34cqi; }
+}
+
+/* ---------- size: compact (2x1) ---------- */
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-summary-weather-badge {
+  flex-direction: row; align-items: center; gap: 5cqi;
+}
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-wx-glyph svg { width: clamp(18px, 16cqi, 40px); }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-wx-temp { font-size: clamp(16px, 15cqi, 34px); }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-wx-cond,
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-wx-city { font-size: clamp(10px, 5.5cqi, 13px); }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-summary-countdown { justify-content: center; gap: 1cqi; }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-cd-main { flex-direction: row; align-items: baseline; gap: 3cqi; }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-cd-value { font-size: clamp(18px, 18cqi, 44px); }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-cd-title,
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-cd-caption { font-size: clamp(10px, 5.5cqi, 13px); }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-focus-play { width: clamp(30px, 22cqi, 56px); }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-focus-time { font-size: clamp(14px, 12cqi, 28px); }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-focus-phase { font-size: clamp(10px, 5.5cqi, 13px); }
+
+/* ---------- size: square (2x2) ---------- */
+:is(.daily-card[data-widget-size='square'], [data-widget-size='square'] > .daily-card) .daily-roomy { display: block; }
+:is(.daily-card[data-widget-size='square'], [data-widget-size='square'] > .daily-card) > .daily-summary:not(.daily-summary-date-tile) { justify-content: space-between; }
+:is(.daily-card[data-widget-size='square'], [data-widget-size='square'] > .daily-card) .daily-wx-main { flex-direction: column; align-items: flex-start; }
+:is(.daily-card[data-widget-size='square'], [data-widget-size='square'] > .daily-card) .daily-wx-glyph svg { width: clamp(24px, 28cqi, 64px); }
+:is(.daily-card[data-widget-size='square'], [data-widget-size='square'] > .daily-card) .daily-wx-temp { font-size: clamp(22px, 30cqi, 64px); }
+:is(.daily-card[data-widget-size='square'], [data-widget-size='square'] > .daily-card) .daily-cd-value { font-size: clamp(28px, 40cqi, 88px); }
+:is(.daily-card[data-widget-size='square'], [data-widget-size='square'] > .daily-card) .daily-date-month { font-size: clamp(11px, 9cqi, 18px); line-height: 1.9; }
+:is(.daily-card[data-widget-size='square'], [data-widget-size='square'] > .daily-card) .daily-date-day { font-size: clamp(32px, 50cqi, 110px); }
+
+/* ---------- tiny containers (mobile) ---------- */
+@container daily (max-width: 120px) {
+  .daily-card .daily-optional, .daily-card .daily-roomy { display: none !important; }
+}
+@container daily (max-width: 62px) {
+  .daily-card .daily-tiny-hide, .daily-card .daily-cd-caption { display: none; }
+  .daily-card .daily-focus-ring {
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  }
+  /* 1x1 at ~46–50px: value first, unit may wrap under it; digit count drives size so nothing clips */
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-cd-figure {
+    flex-wrap: wrap; justify-content: center; row-gap: 0; column-gap: 1px; max-width: 100%;
+  }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card)[data-cd-digits='3'] .daily-cd-value { font-size: max(12px, 34cqi); }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card)[data-cd-digits='4'] .daily-cd-value { font-size: max(11px, 27cqi); }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card):is([data-cd-digits='5'], [data-cd-digits='6'], [data-cd-digits='7']) .daily-cd-value { font-size: max(9px, 20cqi); letter-spacing: -0.06em; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-cd-unit { font-size: max(8px, 18cqi); line-height: 1.05; }
+  /* date 1x1: compact month band so day + weekday fit a 46px tile */
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-date-month { font-size: max(7.5px, 17cqi); line-height: 1.35; letter-spacing: 0.02em; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-date-day { font-size: max(16px, 44cqi); line-height: 0.92; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-date-week { font-size: max(7.5px, 17cqi); line-height: 1.15; }
+  /* weather 1x1: glyph + temp only, both readable */
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-wx-main { gap: 0; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-wx-glyph svg { width: max(16px, 42cqi); }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-wx-temp { font-size: max(12px, 32cqi); letter-spacing: -0.04em; }
+  /* focus 1x1: tap target + time stay inside the 40px content box */
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-focus-launcher { gap: 1px; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-focus-play { width: max(24px, 56cqi); min-width: 24px; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-focus-time { font-size: max(8.5px, 21cqi); letter-spacing: -0.03em; }
+}
+
+/* 2x1 at ~96–113 x 48px: keep value + title/phase, drop optional labels, never clip long numbers */
+@container daily (max-width: 120px) {
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) > .daily-summary { gap: 1px; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-cd-main { gap: 2px; min-width: 0; overflow: hidden; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-cd-value { font-size: clamp(15px, 20cqi, 24px); }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card)[data-cd-digits='4'] .daily-cd-value { font-size: clamp(13px, 16cqi, 20px); }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card):is([data-cd-digits='5'], [data-cd-digits='6'], [data-cd-digits='7']) .daily-cd-value { font-size: clamp(11px, 12.5cqi, 16px); letter-spacing: -0.05em; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card)[data-countdown-state='today'] .daily-cd-value { font-size: clamp(13px, 15cqi, 18px); }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-cd-caption,
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-cd-title { font-size: 10px; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-cd-unit { font-size: 11px; flex: none; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-wx-main { gap: 3px; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-summary-weather-badge { gap: 4px; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-wx-glyph svg { width: 18px; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-wx-temp { font-size: 16px; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-wx-cond,
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-wx-city { font-size: 10px; line-height: 1.2; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-summary-focus-launcher { gap: 5px; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-focus-play { width: min(34px, 76cqb); min-width: 26px; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-focus-time { font-size: 14px; }
+  :is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-focus-phase { font-size: 10px; }
+}
+
+/* date-tile shown as temporary 2x1 summary (short windows): month band left, day + weekday right */
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-summary-date-tile { justify-content: stretch; }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-date-page { flex-direction: row; width: 100%; }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-date-month {
+  display: flex; align-items: center; justify-content: center; flex: 0 0 34%;
+  font-size: clamp(9px, 8cqi, 14px); line-height: 1.2; padding: 0 2px; text-align: center;
+}
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-date-body {
+  flex-direction: row; align-items: baseline; justify-content: center; gap: 4px; padding: 0 4px; min-width: 0;
+}
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-date-day { font-size: clamp(18px, 62cqb, 40px); }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-date-week { font-size: clamp(9px, 7cqi, 14px); white-space: nowrap; }
+:is(.daily-card[data-widget-size='compact'], [data-widget-size='compact'] > .daily-card) .daily-date-extra { display: none; }
+
+/* 1x1 desktop: 3-digit countdowns need a little less than the 2-digit focal size */
+@container daily (min-width: 66px) {
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card)[data-cd-digits='3'] .daily-summary-countdown .daily-cd-value { font-size: 38cqi; }
+  :is(.daily-card[data-widget-size='single'], [data-widget-size='single'] > .daily-card) .daily-summary-countdown .daily-cd-figure { flex-wrap: wrap; row-gap: 0; }
+}
+
+/* ---------- detail (modal) ---------- */
+.daily-card .daily-detail .daily-hero { display: flex; align-items: center; gap: 14px; }
+.daily-card .daily-detail .daily-hero-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.daily-card .daily-detail .daily-hero-value {
+  font-size: 40px; font-weight: 800; line-height: 1.05; letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums; color: var(--daily-fg); overflow-wrap: anywhere;
+}
+.daily-card.daily-focus-launcher .daily-detail .daily-hero-value { color: var(--daily-accent); }
+.daily-card.daily-date-tile .daily-detail .daily-hero-value { color: var(--daily-accent); }
+.daily-card .daily-detail .daily-hero-caption,
+.daily-card .daily-detail .daily-detail-sub { font-size: 14px; color: var(--daily-muted); overflow-wrap: anywhere; }
+.daily-card .daily-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin: 0; }
+.daily-card .daily-fact { padding: 8px 10px; border-radius: 10px; background: var(--daily-chip); box-shadow: inset 0 0 0 1px var(--daily-line); }
+.daily-card .daily-fact dt { font-size: 12px; color: var(--daily-muted); }
+.daily-card .daily-fact dd { margin: 2px 0 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.daily-card .daily-note { margin: 0; font-size: 13px; color: var(--daily-muted); }
+.daily-card .daily-note.is-error { color: var(--daily-fg); font-weight: 600; }
+.daily-card.daily-date-tile .daily-note.is-error { color: #d70015; }
+.daily-card .daily-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.daily-card .daily-btn, .daily-card .daily-seg {
+  position: relative; z-index: 1; pointer-events: auto;
+  min-height: 36px; padding: 6px 16px; border-radius: 999px; border: 1px solid transparent;
+  background: var(--daily-accent); color: var(--daily-on-accent);
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.daily-card .daily-btn.is-ghost, .daily-card .daily-seg {
+  background: var(--daily-chip); color: var(--daily-fg); border-color: var(--daily-line);
+}
+.daily-card .daily-seg.is-active { background: var(--daily-accent); color: var(--daily-on-accent); border-color: transparent; }
+.daily-card .daily-btn:disabled, .daily-card .daily-seg:disabled { opacity: 0.45; cursor: not-allowed; }
+.daily-card .daily-btn:focus-visible, .daily-card .daily-seg:focus-visible, .daily-card .daily-input:focus-visible {
+  outline: 2px solid var(--daily-fg); outline-offset: 2px;
+}
+.daily-card .daily-segs { display: inline-flex; gap: 6px; }
+.daily-card .daily-focus-hero-time { font-size: 56px; }
+.daily-card .daily-form { display: flex; flex-direction: column; gap: 10px; }
+.daily-card .daily-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--daily-muted); }
+.daily-card .daily-input {
+  min-height: 38px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--daily-line);
+  background: rgba(255, 255, 255, 0.94); color: #1c1c1e; font: inherit; font-size: 15px; color-scheme: light;
+}
+.daily-card .daily-progress { position: relative; height: 6px; border-radius: 999px; background: var(--daily-chip); overflow: hidden; }
+.daily-card .daily-progress-fill { position: absolute; inset: 0 auto 0 0; width: var(--daily-progress, 0%); background: var(--daily-accent); border-radius: inherit; }
+
+@media (prefers-reduced-motion: reduce) {
+  .daily-card .daily-focus-icon { transition: none; }
+}

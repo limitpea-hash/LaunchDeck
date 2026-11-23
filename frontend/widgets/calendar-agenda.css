@@ -1,0 +1,711 @@
+/* =====================================================================
+ * LaunchDeck calendar · month + agenda (calendar.js)
+ * Linked by core after styles.css. Scoped to .widget-calendar only.
+ *  - 4×4 grid card ([data-widget-size='full']) and the detail modal
+ *    (.widget-in-detail-modal) share one DOM: .widget-inner.cal-full
+ *  - 2×2 / 2×1 summary keeps .widget-compact-summary
+ * ===================================================================== */
+
+.ios-widget.widget-calendar {
+  --cal-red: #e53935;
+  --cal-amber: #e68a00;
+  --cal-green: #1ea866;
+  --cal-blue: #2563eb;
+  --cal-violet: #7c4dff;
+}
+.widget-calendar [data-color='red'] { --mark: var(--cal-red); }
+.widget-calendar [data-color='amber'] { --mark: var(--cal-amber); }
+.widget-calendar [data-color='green'] { --mark: var(--cal-green); }
+.widget-calendar [data-color='blue'] { --mark: var(--cal-blue); }
+.widget-calendar [data-color='violet'] { --mark: var(--cal-violet); }
+.widget-calendar .cal-sr {
+  position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ---------- which surface is visible ---------- */
+.ios-widget.widget-calendar[data-widget-size]:not([data-widget-size='full']):not(.widget-in-detail-modal) > .cal-full { display: none !important; }
+.ios-widget.widget-calendar[data-widget-size='full']:not(.widget-in-detail-modal) > .widget-compact-summary,
+.ios-widget.widget-calendar.widget-in-detail-modal > .widget-compact-summary { display: none !important; }
+.ios-widget.widget-calendar[data-widget-size='full']:not(.widget-in-detail-modal) > .cal-full,
+.ios-widget.widget-calendar.widget-in-detail-modal > .cal-full { display: flex !important; }
+
+/* ---------- card skin for the full calendar (warm white + charcoal night) ---------- */
+.ios-widget.widget-calendar[data-widget-size='full']:not(.widget-in-detail-modal),
+.ios-widget.widget-calendar.widget-in-detail-modal {
+  --cal-bg: #fcfaf7;
+  --cal-fg: #1d2129;
+  --cal-muted: #646b77;
+  --cal-dim: #9aa1ae;
+  --cal-line: rgba(29, 33, 41, 0.08);
+  --cal-tile: rgba(29, 33, 41, 0.035);
+  --cal-tile-hi: rgba(29, 33, 41, 0.075);
+  --cal-panel-bg: rgba(29, 33, 41, 0.025);
+  --cal-input-bg: #ffffff;
+  --cal-today: #e53935;
+  --cal-today-soft: rgba(229, 57, 53, 0.1);
+  --cal-select: #2563eb;
+  --cal-select-ink: #ffffff;
+  --cal-select-ring: rgba(37, 99, 235, 0.28);
+  --cal-accent: var(--cal-select);
+  --cal-accent-ink: var(--cal-select-ink);
+  --cal-weekend: #c9564c;
+  --cal-danger-bg: rgba(229, 57, 53, 0.1);
+  --cal-danger-bg-hi: rgba(229, 57, 53, 0.17);
+  --cal-danger-fg: #c62828;
+  --cal-status-ok: #15803d;
+  --cal-status-err: #c62828;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 16px;
+  border-radius: 25px;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-align: left;
+  color: var(--cal-fg);
+  background: var(--cal-bg);
+  border: 1px solid rgba(29, 33, 41, 0.07);
+  box-shadow: 0 8px 24px rgba(18, 22, 30, 0.06), 0 1px 2px rgba(18, 22, 30, 0.04);
+  font-feature-settings: 'tnum' 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+body[data-night-mode="true"] .ios-widget.widget-calendar[data-widget-size='full']:not(.widget-in-detail-modal),
+body[data-night-mode="true"] .ios-widget.widget-calendar.widget-in-detail-modal {
+  --cal-bg: #1c1e22;
+  --cal-fg: #f0f2f5;
+  --cal-muted: rgba(235, 239, 245, 0.64);
+  --cal-dim: rgba(235, 239, 245, 0.36);
+  --cal-line: rgba(255, 255, 255, 0.08);
+  --cal-tile: rgba(255, 255, 255, 0.055);
+  --cal-tile-hi: rgba(255, 255, 255, 0.11);
+  --cal-panel-bg: rgba(255, 255, 255, 0.035);
+  --cal-input-bg: rgba(255, 255, 255, 0.06);
+  --cal-today: #ff5a54;
+  --cal-today-soft: rgba(255, 90, 84, 0.14);
+  --cal-select: #3b82f6;
+  --cal-select-ink: #ffffff;
+  --cal-select-ring: rgba(59, 130, 246, 0.36);
+  --cal-weekend: #f28b82;
+  --cal-danger-bg: rgba(255, 90, 84, 0.15);
+  --cal-danger-bg-hi: rgba(255, 90, 84, 0.24);
+  --cal-danger-fg: #ff9b96;
+  --cal-status-ok: #4ade80;
+  --cal-status-err: #ff8a80;
+  --cal-red: #ff6b6b;
+  --cal-amber: #ffb547;
+  --cal-green: #3fd08a;
+  --cal-blue: #5b9dff;
+  --cal-violet: #b48cff;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.ios-widget.widget-calendar.widget-in-detail-modal { padding: 20px; overflow: visible; }
+
+.ios-widget.widget-calendar > .cal-full {
+  container: cal / inline-size;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  box-sizing: border-box;
+  color: var(--cal-fg);
+}
+.widget-calendar .cal-full [hidden] { display: none !important; }
+
+/* ---------- header ---------- */
+.widget-calendar .cal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--cal-line);
+}
+.widget-calendar .cal-title { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 7px; white-space: nowrap; overflow: hidden; margin: 0; }
+.widget-calendar .cal-title-month { font-size: 20px; font-weight: 780; letter-spacing: -0.025em; line-height: 1.1; }
+.widget-calendar .cal-title-year { font-size: 13px; font-weight: 600; color: var(--cal-muted); }
+.widget-calendar .cal-nav { display: flex; gap: 4px; flex: none; }
+.widget-calendar .cal-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: var(--cal-tile);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+.widget-calendar .cal-nav .cal-btn { padding: 0 7px; }
+.widget-calendar .cal-nav .cal-btn span[aria-hidden='true']:only-child { font-size: 16px; line-height: 1; margin-top: -1px; }
+.widget-calendar .cal-btn:hover { background: var(--cal-tile-hi); }
+.widget-calendar .cal-btn:active { transform: scale(0.95); }
+.widget-calendar .cal-week-btn { color: var(--cal-select); }
+.widget-calendar .cal-lbl-long { display: none; }
+.widget-calendar :is(.cal-btn, .cal-day, .cal-input, .cal-ag-todos):focus-visible {
+  outline: 2px solid var(--cal-select);
+  outline-offset: 2px;
+}
+
+/* ---------- body: 4×4 desktop (~350px inner): month (~193px) + agenda (~130–150px) ---------- */
+.widget-calendar .cal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(175px, 1.35fr) minmax(130px, 1fr);
+  gap: 12px;
+}
+.widget-calendar .cal-month { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+.widget-calendar .cal-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); flex: none; padding: 0 1px; }
+.widget-calendar .cal-weekday { text-align: center; font-size: 11px; font-weight: 680; color: var(--cal-muted); line-height: 1.45; }
+.widget-calendar .cal-weekday.is-weekend { color: var(--cal-weekend); opacity: 0.9; }
+.widget-calendar .cal-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  gap: 3px;
+}
+.widget-calendar .cal-day {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  margin: 0;
+  padding: 2px 1px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--cal-fg);
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.widget-calendar .cal-day:hover { background: var(--cal-tile-hi); }
+.widget-calendar .cal-day-num {
+  display: block;
+  flex: none;
+  font-size: 13.5px;
+  font-weight: 620;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.widget-calendar .cal-day.is-weekend .cal-day-num { color: var(--cal-weekend); }
+.widget-calendar .cal-day.is-outside { color: var(--cal-dim); }
+.widget-calendar .cal-day.is-outside .cal-day-num { color: var(--cal-dim); font-weight: 500; }
+.widget-calendar .cal-day.is-holiday,
+.widget-calendar .cal-day.is-workday { background: transparent; }
+.widget-calendar .cal-day.is-holiday:hover,
+.widget-calendar .cal-day.is-workday:hover { background: var(--cal-tile-hi); }
+.widget-calendar .cal-day.is-today { background: var(--cal-today-soft); box-shadow: inset 0 0 0 1.5px var(--cal-today); }
+.widget-calendar .cal-day.is-today .cal-day-num { color: var(--cal-today); font-weight: 800; }
+.widget-calendar .cal-day.is-selected {
+  background: var(--cal-select);
+  color: var(--cal-select-ink);
+  box-shadow: 0 0 0 2px var(--cal-select-ring);
+}
+.widget-calendar .cal-day.is-selected:hover { background: var(--cal-select); }
+.widget-calendar .cal-day.is-selected .cal-day-num { color: var(--cal-select-ink); font-weight: 780; }
+.widget-calendar .cal-day.is-today.is-selected {
+  background: var(--cal-select);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35), 0 0 0 2px var(--cal-select-ring);
+}
+.widget-calendar .cal-day-dots {
+  display: flex;
+  gap: 0;
+  height: 4.5px;
+  min-height: 4.5px;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.widget-calendar .cal-dot { width: 4.5px; height: 4.5px; border-radius: 50%; background: var(--mark, var(--cal-blue)); box-sizing: border-box; flex: none; }
+.widget-calendar .cal-dot.is-workday { background: #64748b; }
+body[data-night-mode="true"] .widget-calendar .cal-dot.is-workday { background: #94a3b8; }
+.widget-calendar .cal-dot.is-todo { background: transparent; border: 1px solid currentColor; opacity: 0.78; }
+.widget-calendar .cal-dot.is-todo.is-done { opacity: 0.36; }
+.widget-calendar .cal-day.is-selected .cal-dot:not(.is-todo) { box-shadow: 0 0 0 1.25px rgba(255, 255, 255, 0.85); }
+
+/* ---------- agenda panel ---------- */
+.widget-calendar .cal-agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 11px 11px 9px;
+  border-radius: 16px;
+  background: var(--cal-panel-bg);
+  border: 1px solid var(--cal-line);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  box-sizing: border-box;
+}
+.widget-calendar .cal-ag-head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex: none;
+  min-width: 0;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--cal-line);
+}
+.widget-calendar .cal-ag-daynum { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; line-height: 0.95; font-variant-numeric: tabular-nums; }
+.widget-calendar .cal-ag-headtext { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.widget-calendar .cal-ag-meta { font-size: 11px; font-weight: 560; color: var(--cal-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.widget-calendar .cal-ag-today { font-size: 10.5px; font-weight: 760; color: var(--cal-today); }
+.widget-calendar .cal-ag-brief { display: none; }
+.widget-calendar .cal-ag-holiday { display: flex; align-items: flex-start; gap: 5px; min-width: 0; flex: none; font-size: 11.5px; font-weight: 650; line-height: 1.3; }
+.widget-calendar .cal-ag-badge {
+  flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; margin-top: 1px; border-radius: 5px;
+  font-size: 10px; font-weight: 800; color: #fff; background: #e53935;
+}
+.widget-calendar .cal-ag-holiday.is-workday .cal-ag-badge { background: #64748b; }
+.widget-calendar .cal-ag-holname { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.widget-calendar .cal-ag-mark { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; flex: none; min-width: 0; }
+.widget-calendar .cal-ag-markchip {
+  display: flex; align-items: flex-start; gap: 5px; width: 100%; box-sizing: border-box; min-width: 0;
+  padding: 5px 7px; border-radius: 8px;
+  background: var(--cal-tile);
+  border-left: 3px solid var(--mark, var(--cal-blue));
+}
+.widget-calendar .cal-ag-markdot { display: none; }
+.widget-calendar .cal-ag-marktext {
+  min-width: 0; font-size: 11.5px; font-weight: 650; line-height: 1.35;
+  white-space: normal; overflow-wrap: anywhere; word-break: break-word;
+}
+.widget-calendar .cal-ag-markbtn { height: 22px; font-size: 11px; padding: 0 8px; color: var(--cal-select); }
+.widget-calendar .cal-ag-todos {
+  flex: 1 0 auto; min-height: 0; overflow-y: visible; overflow-x: hidden;
+  display: flex; flex-direction: column; gap: 4px;
+  border-radius: 6px;
+}
+.widget-calendar .cal-ag-sec { font-size: 10px; font-weight: 740; letter-spacing: 0.04em; color: var(--cal-muted); flex: none; }
+.widget-calendar .cal-ag-empty { font-size: 11px; color: var(--cal-dim); line-height: 1.35; }
+.widget-calendar .cal-ag-todolist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.widget-calendar .cal-ag-todo { display: flex; align-items: flex-start; gap: 5px; min-width: 0; font-size: 11.5px; line-height: 1.35; }
+.widget-calendar .cal-ag-bullet { flex: none; font-size: 9.5px; line-height: 1.5; color: var(--cal-select); }
+.widget-calendar .cal-ag-todotext { min-width: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.widget-calendar .cal-ag-todo.is-done .cal-ag-todotext { text-decoration: line-through; color: var(--cal-dim); }
+.widget-calendar .cal-ag-todo.is-done .cal-ag-bullet { color: var(--cal-dim); }
+.widget-calendar .cal-ag-note { flex: none; font-size: 10px; line-height: 1.35; color: var(--cal-dim); }
+
+/* marker form: detail only */
+.widget-calendar .cal-form { display: none; }
+.ios-widget.widget-calendar.widget-in-detail-modal .cal-form {
+  display: flex; flex-direction: column; gap: 9px; flex: none;
+  margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--cal-line);
+}
+.widget-calendar .cal-form-title { font-size: 13.5px; font-weight: 720; color: var(--cal-fg); }
+.widget-calendar .cal-field-label { font-size: 11.5px; font-weight: 650; color: var(--cal-muted); padding: 0; }
+.widget-calendar .cal-input {
+  width: 100%; box-sizing: border-box; min-width: 0;
+  padding: 8px 11px; border-radius: 10px;
+  border: 1px solid var(--cal-line); background: var(--cal-input-bg);
+  color: var(--cal-fg); font: inherit; font-size: 14px;
+}
+.widget-calendar .cal-input:focus { border-color: var(--cal-select); }
+.widget-calendar .cal-input::placeholder { color: var(--cal-dim); }
+.widget-calendar .cal-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.widget-calendar .cal-swatches > legend { float: left; margin-right: 4px; }
+.widget-calendar .cal-swatch { position: relative; display: inline-grid; place-items: center; width: 28px; height: 28px; cursor: pointer; }
+.widget-calendar .cal-swatch-input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.widget-calendar .cal-swatch-dot {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--mark);
+  box-shadow: 0 0 0 2px transparent; transition: box-shadow 0.15s ease, transform 0.15s ease; pointer-events: none;
+}
+.widget-calendar .cal-swatch-input:checked + .cal-swatch-dot { box-shadow: 0 0 0 2px var(--cal-bg), 0 0 0 4px var(--mark); transform: scale(0.92); }
+.widget-calendar .cal-swatch-input:focus-visible + .cal-swatch-dot { outline: 2px solid var(--cal-select); outline-offset: 5px; }
+.widget-calendar .cal-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.widget-calendar .cal-form-actions .cal-btn { height: 32px; padding: 0 14px; font-size: 13px; border-radius: 10px; }
+.widget-calendar .cal-btn.is-primary { background: var(--cal-select); color: var(--cal-select-ink); }
+.widget-calendar .cal-btn.is-primary:hover { filter: brightness(1.06); }
+.widget-calendar .cal-btn.is-danger { background: var(--cal-danger-bg); color: var(--cal-danger-fg); }
+.widget-calendar .cal-btn.is-danger:hover { background: var(--cal-danger-bg-hi); }
+.widget-calendar .cal-form-count { margin-left: auto; font-size: 11px; color: var(--cal-dim); font-variant-numeric: tabular-nums; }
+.widget-calendar .cal-form-status { margin: 0; font-size: 12px; color: var(--cal-status-ok); }
+.widget-calendar .cal-form-status.is-error { color: var(--cal-status-err); }
+
+/* ---------- phone 4×4 (~208px at 375, ~176px at 320): stack month over a one-line agenda ---------- */
+@container widget-summary (max-width: 265px) {
+  .ios-widget.widget-calendar[data-widget-size='full']:not(.widget-in-detail-modal) {
+    padding: 10px 10px 9px;
+    border-radius: 20px;
+  }
+}
+@container widget-summary (max-width: 200px) {
+  .ios-widget.widget-calendar[data-widget-size='full']:not(.widget-in-detail-modal) {
+    padding: 8px 8px 7px;
+    border-radius: 18px;
+  }
+}
+@container cal (max-width: 249px) {
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) > .cal-full { gap: 4px; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 4px; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-agenda {
+    flex-direction: row; align-items: center; gap: 6px; padding: 3.5px 7px; border-radius: 9px; overflow: hidden;
+  }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) :is(.cal-ag-holiday, .cal-ag-mark, .cal-ag-todos, .cal-ag-note, .cal-ag-today) { display: none !important; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-ag-head { align-items: baseline; gap: 4px; flex: none; padding-bottom: 0; border-bottom: 0; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-ag-daynum { font-size: 13px; line-height: 1.1; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-ag-headtext { flex-direction: row; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-ag-meta { font-size: 9.5px; line-height: 1.15; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-ag-brief {
+    display: block; flex: 1 1 auto; min-width: 0; font-size: 10px; font-weight: 600; line-height: 1.15;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;
+  }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-head { gap: 4px; padding-bottom: 4px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-title-month { font-size: 13.5px; line-height: 1.1; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-title-year { font-size: 10px; line-height: 1.1; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-nav { gap: 2px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-nav .cal-btn { height: 19px; min-width: 19px; padding: 0 3.5px; font-size: 10px; border-radius: 6px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-month { gap: 2px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-weekday { font-size: 8.5px; line-height: 1.15; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-grid { gap: 1px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-day { border-radius: 5.5px; gap: 1px; padding: 0.5px 0; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-day-num { font-size: 10.5px; line-height: 1.08; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-day-dots { height: 3px; min-height: 3px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-dot { width: 3px; height: 3px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-dot.is-todo { border-width: 0.75px; }
+}
+@container cal (max-width: 175px) {
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) > .cal-full { gap: 2.5px; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-body { gap: 3px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-head { padding-bottom: 3px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-title-month { font-size: 12.5px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-nav .cal-btn { height: 17px; min-width: 17px; padding: 0 3px; font-size: 9.5px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-weekday { font-size: 8px; line-height: 1.1; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-day-num { font-size: 9.5px; line-height: 1.04; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-day-dots { height: 2.5px; min-height: 2.5px; }
+  .widget-calendar:not(.widget-in-detail-modal) .cal-dot { width: 2.5px; height: 2.5px; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-agenda { padding: 2.5px 6px; border-radius: 7px; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) .cal-ag-daynum { font-size: 11.5px; }
+  .ios-widget.widget-calendar:not(.widget-in-detail-modal) :is(.cal-ag-meta, .cal-ag-brief) { font-size: 9px; }
+}
+
+/* ---------- detail: full month + full agenda + form ---------- */
+.ios-widget.widget-calendar.widget-in-detail-modal > .cal-full { overflow: visible; gap: 14px; }
+.widget-calendar.widget-in-detail-modal .cal-head { padding-bottom: 12px; }
+.widget-calendar.widget-in-detail-modal .cal-lbl-short { display: none; }
+.widget-calendar.widget-in-detail-modal .cal-lbl-long { display: inline; }
+.widget-calendar.widget-in-detail-modal .cal-title-month { font-size: 24px; }
+.widget-calendar.widget-in-detail-modal .cal-title-year { font-size: 14px; }
+.widget-calendar.widget-in-detail-modal .cal-nav { gap: 6px; }
+.widget-calendar.widget-in-detail-modal .cal-nav .cal-btn { height: 32px; min-width: 32px; padding: 0 10px; font-size: 13px; border-radius: 10px; }
+.widget-calendar.widget-in-detail-modal .cal-body { grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 16px; align-items: start; }
+.widget-calendar.widget-in-detail-modal .cal-month { gap: 6px; }
+.widget-calendar.widget-in-detail-modal .cal-weekday { font-size: 12px; }
+.widget-calendar.widget-in-detail-modal .cal-grid { grid-template-rows: repeat(6, minmax(46px, auto)); gap: 4px; }
+.widget-calendar.widget-in-detail-modal .cal-day { border-radius: 11px; justify-content: center; padding: 5px 3px 4px; gap: 4px; }
+.widget-calendar.widget-in-detail-modal .cal-day-num { font-size: 15px; line-height: 1.15; }
+.widget-calendar.widget-in-detail-modal .cal-day-dots { height: 6px; min-height: 6px; }
+.widget-calendar.widget-in-detail-modal .cal-dot { width: 6px; height: 6px; }
+.widget-calendar.widget-in-detail-modal .cal-agenda { padding: 15px; gap: 10px; border-radius: 18px; overflow: visible; }
+.widget-calendar.widget-in-detail-modal .cal-ag-daynum { font-size: 36px; }
+.widget-calendar.widget-in-detail-modal .cal-ag-meta,
+.widget-calendar.widget-in-detail-modal .cal-ag-today { font-size: 12.5px; }
+.widget-calendar.widget-in-detail-modal .cal-ag-holiday { font-size: 13px; }
+.widget-calendar.widget-in-detail-modal .cal-ag-badge { width: 20px; height: 20px; font-size: 12px; border-radius: 6px; margin-top: 0; }
+.widget-calendar.widget-in-detail-modal .cal-ag-marktext { font-size: 13px; }
+.widget-calendar.widget-in-detail-modal .cal-ag-markchip { padding: 7px 9px; }
+.widget-calendar.widget-in-detail-modal .cal-ag-markbtn { height: 28px; font-size: 12px; padding: 0 10px; }
+.widget-calendar.widget-in-detail-modal .cal-ag-todos { flex: none; max-height: 220px; overflow-y: auto; gap: 5px; }
+.widget-calendar.widget-in-detail-modal .cal-ag-sec { font-size: 11px; }
+.widget-calendar.widget-in-detail-modal .cal-ag-todo { font-size: 13px; }
+.widget-calendar.widget-in-detail-modal .cal-ag-todotext { white-space: normal; overflow-wrap: anywhere; }
+.widget-calendar.widget-in-detail-modal .cal-ag-empty,
+.widget-calendar.widget-in-detail-modal .cal-ag-note { font-size: 12px; }
+@container cal (max-width: 560px) {
+  .widget-calendar.widget-in-detail-modal .cal-body { grid-template-columns: minmax(0, 1fr); }
+  .widget-calendar.widget-in-detail-modal .cal-grid { grid-template-rows: repeat(6, minmax(42px, auto)); gap: 3px; }
+}
+@container cal (max-width: 380px) {
+  .widget-calendar.widget-in-detail-modal .cal-head { flex-wrap: wrap; }
+  .widget-calendar.widget-in-detail-modal .cal-nav { width: 100%; justify-content: space-between; }
+  .widget-calendar.widget-in-detail-modal .cal-grid { grid-template-rows: repeat(6, minmax(36px, auto)); gap: 2px; }
+  .widget-calendar.widget-in-detail-modal .cal-day { padding: 4px 1px 3px; border-radius: 8px; gap: 3px; }
+  .widget-calendar.widget-in-detail-modal .cal-day-num { font-size: 13px; }
+  .widget-calendar.widget-in-detail-modal .cal-day-dots { height: 5px; min-height: 5px; }
+  .widget-calendar.widget-in-detail-modal .cal-dot { width: 5px; height: 5px; }
+}
+
+/* ---------- 2×2 / 2×1 summary additions ---------- */
+.widget-calendar .compact-cal-body {
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.widget-calendar .compact-cal-tile {
+  line-height: 1.08;
+  gap: 2px;
+}
+.widget-calendar .compact-cal-tile-month {
+  line-height: 1.15;
+}
+.widget-calendar .compact-cal-tile-day {
+  line-height: 1.02;
+}
+.widget-calendar .compact-cal-meta {
+  min-width: 0;
+  gap: 2px;
+}
+.widget-calendar .compact-cal-weekday {
+  line-height: 1.2;
+}
+.widget-calendar .compact-cal-note {
+  min-width: 0; max-width: 100%; margin-top: 1px;
+  font-size: 11px; font-weight: 650; line-height: 1.25; opacity: 0.88;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.widget-calendar .compact-cal-note[data-kind='holiday'] { color: #e53935; }
+.widget-calendar .compact-cal-note[data-kind='workday'] { color: #64748b; }
+body[data-night-mode="true"] .widget-calendar .compact-cal-note[data-kind='holiday'] { color: #ff6b6b; }
+body[data-night-mode="true"] .widget-calendar .compact-cal-note[data-kind='workday'] { color: #94a3b8; }
+.widget-calendar .compact-cal-note[data-kind='mark']::before {
+  content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%;
+  background: var(--mark, var(--cal-blue)); vertical-align: 1px;
+}
+
+/* 2×2 week strip: override styles.css :last-child rule so number and dedicated dot slot stay separate */
+.widget-calendar .summary-cal-day-pill.cal-pill {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px 1px;
+  overflow: visible;
+}
+.widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-dow {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--summary-muted);
+}
+.widget-calendar .summary-cal-day-pill.cal-pill.is-today > .summary-cal-day-dow {
+  color: var(--summary-accent);
+  font-weight: 750;
+}
+.widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-num {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--summary-ink);
+  background: transparent;
+  overflow: visible;
+}
+.widget-calendar .summary-cal-day-pill.cal-pill.is-today > .summary-cal-day-num {
+  background: var(--summary-accent);
+  color: #ffffff;
+  font-weight: 800;
+}
+.widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  height: 4px !important;
+  min-height: 4px;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: visible;
+  flex: none;
+}
+.widget-calendar .cal-pill-dot {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--mark, var(--cal-blue));
+  pointer-events: none;
+  flex: none;
+}
+.widget-calendar .cal-pill-dot.is-workday { background: #64748b; }
+body[data-night-mode="true"] .widget-calendar .cal-pill-dot.is-workday { background: #94a3b8; }
+
+/* Compact height & narrow 320/375px 2×2 cards: balanced top date block + week strip with dots inside rounded card */
+@container widget-summary (max-height: 154px) {
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-calendar {
+    padding: 9px 11px 8px;
+    gap: 3px;
+    border-radius: 19px;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-num {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-dots {
+    height: 3.5px !important;
+    min-height: 3.5px;
+  }
+  .widget-calendar .cal-pill-dot {
+    width: 3.5px;
+    height: 3.5px;
+  }
+}
+
+@container widget-summary (max-width: 142px) {
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-calendar {
+    padding: 7px 8px 6px;
+    gap: 2px;
+    border-radius: 16px;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-body {
+    gap: 5px;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-tile-month {
+    font-size: 8.5px;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-tile-day {
+    font-size: 20px;
+    line-height: 1.02;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-weekday {
+    font-size: 10.5px;
+    line-height: 1.15;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-note {
+    font-size: 9px;
+    line-height: 1.2;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .summary-extra-calendar {
+    padding-top: 3px;
+    margin-top: auto;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill {
+    gap: 1px;
+    padding: 1px 0;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-dow {
+    font-size: 7.5px;
+    line-height: 1.1;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-num {
+    width: 14px;
+    height: 14px;
+    font-size: 8.5px;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-dots {
+    height: 3px !important;
+    min-height: 3px;
+  }
+  .widget-calendar .cal-pill-dot {
+    width: 3px;
+    height: 3px;
+  }
+}
+
+@container widget-summary (max-width: 112px) {
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-calendar {
+    padding: 5.5px 6px 5px;
+    gap: 1.5px;
+    border-radius: 15px;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-tile-month {
+    font-size: 7.5px;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-tile-day {
+    font-size: 16.5px;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-weekday {
+    font-size: 9.5px;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-note {
+    display: none;
+  }
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .summary-extra-calendar {
+    padding-top: 2px;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill {
+    gap: 1px;
+    padding: 0.5px 0;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-dow {
+    font-size: 7px;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-num {
+    width: 12px;
+    height: 12px;
+    font-size: 7.5px;
+  }
+  .widget-calendar .summary-cal-day-pill.cal-pill > .summary-cal-day-dots {
+    height: 2.5px !important;
+    min-height: 2.5px;
+  }
+  .widget-calendar .cal-pill-dot {
+    width: 2.5px;
+    height: 2.5px;
+  }
+}
+
+@container widget-summary (max-height: 108px) {
+  .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .compact-cal-note {
+    display: none;
+  }
+}
+
+/* ---------- edit (jiggle) mode: let drags through ---------- */
+body.jiggle-mode .widget-calendar .cal-full :is(button, input, label, form) { pointer-events: none; }
+body.jiggle-mode .widget-calendar .cal-full * { transition: none !important; }
+/* Clear edit-mode delete badge & size switcher on grid cards without altering normal geometry */
+body.jiggle-mode .ios-widget.widget-calendar[data-widget-size='square']:not(.widget-in-detail-modal) .widget-compact-summary.compact-layout-calendar {
+  padding-block-start: 35px;
+}
+body.jiggle-mode .ios-widget.widget-calendar[data-widget-size='full']:not(.widget-in-detail-modal) .cal-title {
+  padding-inline-start: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .widget-calendar .cal-btn, .widget-calendar .cal-day, .widget-calendar .cal-swatch-dot { transition: none; }
+}
+@media (forced-colors: active) {
+  .widget-calendar .cal-day.is-selected { outline: 2px solid Highlight; }
+  .widget-calendar .cal-ag-badge { border: 1px solid CanvasText; }
+}

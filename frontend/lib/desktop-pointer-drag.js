@@ -12,12 +12,295 @@ const FLIP_DURATION_MS = 210;
 export const FOLDER_MERGE_HOVER_MS = 600;
 const FOLDER_CENTER_RATIO = 0.25; // Middle 50% of card width & height (25%..75%)
 
+function parsePixelList(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+  const matches = raw.match(/-?\d+(?:\.\d+)?px/gi);
+  if (!matches) return [];
+  return matches.map((token) => parseFloat(token)).filter((n) => Number.isFinite(n) && n > 0);
+}
+
+function parseFirstPositiveFloat(raw, fallback = 0) {
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function getElementStyleSnapshot(node) {
+  if (!node) return null;
+  return {
+    hadStyleAttr: node.hasAttribute?.('style') ?? Boolean(node.getAttribute?.('style')),
+    styleAttr: node.getAttribute?.('style') ?? null,
+    gridColumn: node.style?.gridColumn || '',
+    gridRow: node.style?.gridRow || '',
+    gridColumnStart: node.style?.gridColumnStart || '',
+    gridColumnEnd: node.style?.gridColumnEnd || '',
+    gridRowStart: node.style?.gridRowStart || '',
+    gridRowEnd: node.style?.gridRowEnd || '',
+  };
+}
+
+function applyElementStyleSnapshot(node, snap) {
+  if (!node || !snap) return;
+  if (typeof node.setAttribute === 'function' && typeof node.removeAttribute === 'function') {
+    if (!snap.hadStyleAttr || snap.styleAttr === null || snap.styleAttr === '') {
+      node.removeAttribute('style');
+    } else {
+      node.setAttribute('style', snap.styleAttr);
+    }
+    return;
+  }
+  if (node.style) {
+    node.style.gridColumn = snap.gridColumn;
+    node.style.gridRow = snap.gridRow;
+    node.style.gridColumnStart = snap.gridColumnStart;
+    node.style.gridColumnEnd = snap.gridColumnEnd;
+    node.style.gridRowStart = snap.gridRowStart;
+    node.style.gridRowEnd = snap.gridRowEnd;
+  }
+}
+
+function readCardDefaultSpan(cardEl, kind, fallbackMetrics = null) {
+  const dsCol = Number(cardEl?.dataset?.colSpan);
+  const dsRow = Number(cardEl?.dataset?.rowSpan);
+  if (Number.isInteger(dsCol) && dsCol > 0 && Number.isInteger(dsRow) && dsRow > 0) {
+    return { colSpan: dsCol, rowSpan: dsRow };
+  }
+  if (kind === 'site' || cardEl?.classList?.contains?.('app-item')) {
+    const isSq = String(cardEl?.dataset?.siteSize || '') === 'square';
+    return isSq ? { colSpan: 2, rowSpan: 2 } : { colSpan: 1, rowSpan: 1 };
+  }
+  const size = String(
+    cardEl?.dataset?.widgetSize || cardEl?.getAttribute?.('data-widget-size') || 'compact'
+  ).trim();
+  const table = {
+    single: { colSpan: 1, rowSpan: 1 },
+    compact: { colSpan: Math.max(1, Number(fallbackMetrics?.widgetColSpan) || 2), rowSpan: 1 },
+    square: { colSpan: 2, rowSpan: 2 },
+    landscape: { colSpan: 3, rowSpan: 2 },
+    tall: { colSpan: 2, rowSpan: 3 },
+    large: { colSpan: 3, rowSpan: 3 },
+    full: { colSpan: 4, rowSpan: 4 },
+    strip: { colSpan: 4, rowSpan: 1 },
+  };
+  return table[size] || table.compact;
+}
+
+/**
+ * Derives column/row track coordinates from computed grid styles (including column/row gap,
+ * padding, and `justify-content: center` track offset) with metric fallbacks for synthetic DOMs.
+ */
+export function measureDesktopGridGeometry(gridEl, metrics = null) {
+  if (!gridEl || typeof gridEl.getBoundingClientRect !== 'function') return null;
+  const rect = gridEl.getBoundingClientRect();
+  const computed =
+    typeof window !== 'undefined' && typeof window.getComputedStyle === 'function'
+      ? window.getComputedStyle(gridEl)
+      : null;
+
+  const padLeft = parseFirstPositiveFloat(computed?.paddingLeft, 0);
+  const padRight = parseFirstPositiveFloat(computed?.paddingRight, 0);
+  const padTop = parseFirstPositiveFloat(computed?.paddingTop, 0);
+  const padBottom = parseFirstPositiveFloat(computed?.paddingBottom, 0);
+
+  const rawColGap = parseFloat(computed?.columnGap || computed?.gap);
+  const colGap =
+    Number.isFinite(rawColGap) && rawColGap >= 0
+      ? rawColGap
+      : Math.max(0, Number(metrics?.colGap) || 12);
+
+  const rawRowGap = parseFloat(computed?.rowGap || computed?.gap);
+  const rowGap =
+    Number.isFinite(rawRowGap) && rawRowGap >= 0
+      ? rawRowGap
+      : Math.max(0, Number(metrics?.rowGap) || 10);
+
+  const parsedCols = parsePixelList(computed?.gridTemplateColumns);
+  let columns = parsedCols.length > 0 ? parsedCols.length : Math.max(1, Math.floor(Number(metrics?.columns) || 6));
+  columns = Math.max(1, Math.min(48, columns));
+
+  const contentWidth = Math.max(0, rect.width - padLeft - padRight);
+  let colWidths = parsedCols.length === columns ? parsedCols.slice() : null;
+  if (!colWidths) {
+    const maxTrack = Number(metrics?.trackMaxWidth);
+    const fitTrack =
+      contentWidth > 0
+        ? Math.max(16, (contentWidth - colGap * Math.max(0, columns - 1)) / columns)
+        : Number.isFinite(maxTrack) && maxTrack > 0
+          ? maxTrack
+          : 90;
+    const trackW =
+      Number.isFinite(maxTrack) && maxTrack > 0 ? Math.min(maxTrack, fitTrack) : fitTrack;
+    colWidths = Array.from({ length: columns }, () => trackW);
+  }
+
+  const parsedAutoRows = parsePixelList(computed?.gridAutoRows);
+  const parsedTemplateRows = parsePixelList(computed?.gridTemplateRows);
+  let rowHeight =
+    parsedAutoRows[0] ||
+    parsedTemplateRows[0] ||
+    Math.max(24, Number(metrics?.rowHeight) || 84);
+  if (!Number.isFinite(rowHeight) || rowHeight <= 0) {
+    rowHeight = 84;
+  }
+
+  const rawMaxRows = Number(metrics?.maxRows);
+  const contentHeight = Math.max(0, rect.height - padTop - padBottom);
+  const derivedMaxRows =
+    Number.isFinite(rawMaxRows) && rawMaxRows > 0
+      ? Math.floor(rawMaxRows)
+      : contentHeight > 0
+        ? Math.max(1, Math.floor((contentHeight + rowGap) / (rowHeight + rowGap)))
+        : 6;
+  const maxRows = Math.max(1, Math.min(50, derivedMaxRows));
+
+  const totalColsWidth =
+    colWidths.reduce((acc, w) => acc + w, 0) + colGap * Math.max(0, columns - 1);
+  const justifyContent = String(computed?.justifyContent || 'center').toLowerCase();
+  let tracksOffsetX = 0;
+  if (contentWidth > totalColsWidth) {
+    if (justifyContent.includes('center')) {
+      tracksOffsetX = (contentWidth - totalColsWidth) / 2;
+    } else if (justifyContent.includes('end') || justifyContent.includes('right')) {
+      tracksOffsetX = contentWidth - totalColsWidth;
+    }
+  }
+
+  const originLeft = rect.left + padLeft + tracksOffsetX;
+  const originTop = rect.top + padTop;
+
+  const colStarts = [];
+  let accX = 0;
+  for (let c = 0; c < columns; c += 1) {
+    colStarts.push(originLeft + accX);
+    accX += colWidths[c] + colGap;
+  }
+
+  const avgColWidth =
+    colWidths.length > 0 ? colWidths.reduce((a, b) => a + b, 0) / colWidths.length : 90;
+
+  return {
+    rect,
+    originLeft,
+    originTop,
+    columns,
+    maxRows,
+    colGap,
+    rowGap,
+    rowHeight,
+    avgColWidth,
+    colWidths,
+    colStarts,
+    totalColsWidth,
+  };
+}
+
+/**
+ * Resolves the top-left anchor cell `{ row, column, inBoundsCell }` from pointer coordinates,
+ * preserving the card's grab offset for multi-cell cards.
+ */
+export function resolveGridAnchorCellFromPointer({
+  geometry,
+  clientX,
+  clientY,
+  grabOffsetX = 0,
+  grabOffsetY = 0,
+  colSpan = 1,
+  rowSpan = 1,
+} = {}) {
+  if (!geometry) return null;
+  const {
+    originLeft,
+    originTop,
+    columns,
+    maxRows,
+    colGap,
+    rowGap,
+    rowHeight,
+    avgColWidth,
+    colWidths,
+    colStarts,
+  } = geometry;
+
+  const effColSpan = Math.max(1, Math.floor(Number(colSpan) || 1));
+  const effRowSpan = Math.max(1, Math.floor(Number(rowSpan) || 1));
+
+  // Top-left corner of the floating card + half a single track so horizontal snapping switches cleanly at cell midpoints
+  const cardLeft = clientX - grabOffsetX;
+  const firstTrackW = colWidths[0] || avgColWidth || 84;
+  const sampleX = cardLeft + firstTrackW * 0.5;
+
+  let rawColumn = 0;
+  const colPitch = Math.max(1, avgColWidth + colGap);
+  if (sampleX < originLeft) {
+    rawColumn = Math.floor((sampleX - originLeft) / colPitch);
+  } else {
+    let matched = false;
+    for (let c = 0; c < columns; c += 1) {
+      const start = colStarts[c];
+      const end = c < columns - 1 ? colStarts[c + 1] : start + colWidths[c] + colGap;
+      if (sampleX < end) {
+        rawColumn = c;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      const lastStart = colStarts[columns - 1] ?? originLeft;
+      rawColumn = columns - 1 + Math.floor((sampleX - lastStart) / colPitch);
+    }
+  }
+
+  // Resolve vertical row from the actual pointer track (including half-gap for a continuous boundary)
+  // minus the relative track of the card that was initially grabbed (0..rowSpan-1).
+  const rowPitch = Math.max(1, rowHeight + rowGap);
+  const halfRowGap = rowGap * 0.5;
+  const pointerRow = Math.floor((clientY - originTop + halfRowGap) / rowPitch);
+  const grabbedRowOffset =
+    effRowSpan > 1
+      ? Math.min(effRowSpan - 1, Math.max(0, Math.floor((grabOffsetY + halfRowGap) / rowPitch)))
+      : 0;
+  const rawRow = pointerRow - grabbedRowOffset;
+
+  const clampedPreviewCol = Math.min(Math.max(0, rawColumn), Math.max(0, columns - 1));
+  const clampedPreviewRow = Math.min(Math.max(0, rawRow), Math.max(0, maxRows - 1));
+
+  // If the card's top-left is within the grid's right/bottom edge but its span would spill by 1..N-1 tracks,
+  // check whether the user is hovering inside the grid vs dragging past the far edge:
+  // keep raw start cell when pointer/card actually pushes into the trailing tracks so out-of-bounds invalid preview
+  // is shown clearly when dragging a multi-cell card onto a trailing column/row that cannot fit its span!
+  const desiredRow = rawRow < 0 ? 0 : rawRow >= maxRows ? maxRows - 1 : rawRow;
+  const desiredColumn = rawColumn < 0 ? 0 : rawColumn >= columns ? columns - 1 : rawColumn;
+
+  const fitsGrid =
+    rawRow >= 0 &&
+    rawRow < maxRows &&
+    rawColumn >= 0 &&
+    rawColumn < columns &&
+    rawRow + effRowSpan <= maxRows &&
+    rawColumn + effColSpan <= columns;
+
+  return {
+    row: desiredRow,
+    column: desiredColumn,
+    rawRow,
+    rawColumn,
+    previewRow: clampedPreviewRow,
+    previewColumn: clampedPreviewCol,
+    colSpan: effColSpan,
+    rowSpan: effRowSpan,
+    fitsGrid,
+  };
+}
+
 export function createDesktopPointerDragController({
   trackEl,
   isJiggleMode,
   getCurrentPageId,
   getCurrentViewId,
   getPagePlacementsForPage,
+  canUseCellDropForGrid,
+  getCellDropSpan,
+  planCellDrop,
+  onCommitCellDrop,
   onDragStart,
   onDragEnd,
   onSwitchPageById,
@@ -101,9 +384,14 @@ export function createDesktopPointerDragController({
     clearFolderMergePreview();
     if (typeof document !== 'undefined') {
       document
-        .querySelectorAll('.drag-over-card, .drag-target-active, .pointer-dragging')
+        .querySelectorAll('.drag-over-card, .drag-target-active, .pointer-dragging, .is-cell-drop-invalid')
         .forEach((node) => {
-          node.classList.remove('drag-over-card', 'drag-target-active', 'pointer-dragging');
+          node.classList.remove(
+            'drag-over-card',
+            'drag-target-active',
+            'pointer-dragging',
+            'is-cell-drop-invalid'
+          );
         });
     }
   }
@@ -116,6 +404,70 @@ export function createDesktopPointerDragController({
       gridEl.querySelector('[data-placement-kind][data-placement-id], .desktop-drag-placeholder')
     );
     dropzone.hidden = hasCardsOrPlaceholder;
+  }
+
+  function restorePlaceholderBaseGeometry() {
+    if (!placeholderEl || !tracked?.placeholderBaseSnapshot) return;
+    placeholderEl.classList.remove('is-cell-drop-preview', 'is-cell-drop-invalid');
+    delete placeholderEl.dataset.previewRow;
+    delete placeholderEl.dataset.previewColumn;
+    delete placeholderEl.dataset.previewValid;
+    applyElementStyleSnapshot(placeholderEl, tracked.placeholderBaseSnapshot);
+  }
+
+  function restoreCellPreviewGridMutations(targetGrid = null, { animateFlip = false } = {}) {
+    if (!tracked?.cellPreviewSnapshots || tracked.cellPreviewSnapshots.size === 0) {
+      if (tracked) {
+        tracked.cellPreviewState = null;
+      }
+      restorePlaceholderBaseGeometry();
+      return;
+    }
+
+    const entries = Array.from(tracked.cellPreviewSnapshots.entries());
+    const toRestore = targetGrid
+      ? entries.filter(([, rec]) => rec.gridEl === targetGrid)
+      : entries;
+
+    if (toRestore.length === 0) {
+      if (!targetGrid && tracked) {
+        tracked.cellPreviewState = null;
+        restorePlaceholderBaseGeometry();
+      }
+      return;
+    }
+
+    const grids = new Set();
+    for (const [, rec] of toRestore) {
+      if (rec.gridEl) grids.add(rec.gridEl);
+    }
+
+    const beforeRectsByGrid = new Map();
+    if (animateFlip) {
+      for (const g of grids) {
+        beforeRectsByGrid.set(g, captureAllGridCardRects(g));
+      }
+    }
+
+    for (const [cardNode, rec] of toRestore) {
+      applyElementStyleSnapshot(cardNode, rec.snapshot);
+      if (cardNode?.dataset) {
+        delete cardNode.dataset.cellPreviewDisplaced;
+      }
+      tracked.cellPreviewSnapshots.delete(cardNode);
+    }
+
+    for (const g of grids) {
+      g.classList.remove('is-cell-drop-invalid');
+      if (animateFlip) {
+        playFlipForGrid(g, beforeRectsByGrid.get(g), { includePinned: true });
+      }
+    }
+
+    if (!targetGrid || tracked.cellPreviewState?.gridEl === targetGrid) {
+      tracked.cellPreviewState = null;
+      restorePlaceholderBaseGeometry();
+    }
   }
 
   function removePlaceholder() {
@@ -135,18 +487,14 @@ export function createDesktopPointerDragController({
       cardEl,
       originalParent,
       originalNextSibling,
-      originalStyleAttr,
+      originalStyleSnapshot,
       fromPageId,
       fromViewId,
       previewGridEl,
     } = tracked;
 
     cardEl.classList.remove('dragging', 'pointer-dragging', 'desktop-floating-card');
-    if (originalStyleAttr === null || originalStyleAttr === undefined || originalStyleAttr === '') {
-      cardEl.removeAttribute('style');
-    } else {
-      cardEl.setAttribute('style', originalStyleAttr);
-    }
+    applyElementStyleSnapshot(cardEl, originalStyleSnapshot);
     cardEl.dataset.pageId = fromPageId;
     if (fromViewId) {
       cardEl.dataset.viewId = fromViewId;
@@ -165,11 +513,11 @@ export function createDesktopPointerDragController({
     }
   }
 
-  function dockFloatingCardIntoPlaceholder() {
+  function dockFloatingCardIntoPlaceholder({ exactRect = null } = {}) {
     if (!tracked || !tracked.cardEl) return;
     const {
       cardEl,
-      originalStyleAttr,
+      originalStyleSnapshot,
       previewPageId,
       previewViewId,
       fromPageId,
@@ -177,10 +525,16 @@ export function createDesktopPointerDragController({
     } = tracked;
 
     cardEl.classList.remove('dragging', 'pointer-dragging', 'desktop-floating-card');
-    if (originalStyleAttr === null || originalStyleAttr === undefined || originalStyleAttr === '') {
-      cardEl.removeAttribute('style');
-    } else {
-      cardEl.setAttribute('style', originalStyleAttr);
+    applyElementStyleSnapshot(cardEl, originalStyleSnapshot);
+    if (exactRect && Number.isInteger(exactRect.row) && Number.isInteger(exactRect.column)) {
+      const cSpan = Math.max(1, Number(exactRect.colSpan) || 1);
+      const rSpan = Math.max(1, Number(exactRect.rowSpan) || 1);
+      cardEl.style.gridColumn = `${exactRect.column + 1} / span ${cSpan}`;
+      cardEl.style.gridRow = `${exactRect.row + 1} / span ${rSpan}`;
+      cardEl.dataset.fixedCell = 'true';
+      cardEl.dataset.savedCell = 'true';
+      cardEl.dataset.fixedRow = String(exactRect.row);
+      cardEl.dataset.fixedColumn = String(exactRect.column);
     }
     cardEl.dataset.pageId = previewPageId || fromPageId;
     if (previewViewId) {
@@ -220,19 +574,35 @@ export function createDesktopPointerDragController({
     }
   }
 
-  function cleanup({ wasDragging = false, restoreOrigin = true } = {}) {
+  function cleanup({
+    wasDragging = false,
+    restoreOrigin = true,
+    keepDisplacedStyles = false,
+    exactDockRect = null,
+  } = {}) {
     clearTabHoverTimer();
     clearEdgeViewTimer();
     clearFolderMergePreview();
     stopAutoScroll();
     clearAllFlipAnimations();
     releaseCapture();
+    if (!keepDisplacedStyles) {
+      restoreCellPreviewGridMutations(null, { animateFlip: false });
+    } else if (tracked?.cellPreviewSnapshots) {
+      for (const [cardNode] of tracked.cellPreviewSnapshots.entries()) {
+        if (cardNode?.dataset) {
+          delete cardNode.dataset.cellPreviewDisplaced;
+        }
+      }
+      tracked.cellPreviewSnapshots.clear();
+      tracked.cellPreviewState = null;
+    }
     if (tracked?.isDragging) {
       if (restoreOrigin) {
         removePlaceholder();
         restoreFloatingCardToOrigin();
       } else {
-        dockFloatingCardIntoPlaceholder();
+        dockFloatingCardIntoPlaceholder({ exactRect: exactDockRect });
       }
     } else {
       removePlaceholder();
@@ -256,10 +626,26 @@ export function createDesktopPointerDragController({
     const dataset = {
       placeholderKind: kind,
     };
+    if (!isWidget && kind === 'site' && String(cardEl.dataset?.siteSize || '') === 'square') {
+      dataset.siteSize = 'square';
+    }
+    const squareWidgetSizes = new Set(['single', 'square', 'large', 'full']);
     if (isWidget) {
-      const rawSize = String(cardEl.dataset?.widgetSize || '').trim();
-      dataset.widgetSize =
-        rawSize === 'compact' || rawSize === 'square' || rawSize === 'wide' ? rawSize : 'compact';
+      const rawSize = String(
+        cardEl.dataset?.widgetSize || cardEl.getAttribute?.('data-widget-size') || ''
+      ).trim();
+      dataset.widgetSize = [
+        'single',
+        'compact',
+        'square',
+        'landscape',
+        'tall',
+        'large',
+        'full',
+        'strip',
+      ].includes(rawSize)
+        ? rawSize
+        : 'compact';
     }
     const ph = el('div', {
       className: `desktop-drag-placeholder ${
@@ -268,11 +654,14 @@ export function createDesktopPointerDragController({
       'aria-hidden': 'true',
       dataset,
     });
-    if (rect && rect.height > 0) {
+    if (isWidget && dataset.widgetSize) {
+      ph.setAttribute('data-widget-size', dataset.widgetSize);
+    }
+    if (rect && rect.height > 0 && !(isWidget && squareWidgetSizes.has(dataset.widgetSize))) {
       ph.style.minHeight = `${Math.round(rect.height)}px`;
       ph.style.height = `${Math.round(rect.height)}px`;
     }
-    if (!isWidget && rect && rect.width > 0) {
+    if (!isWidget && rect && rect.width > 0 && dataset.siteSize !== 'square') {
       ph.style.width = `${Math.round(rect.width)}px`;
     }
     return ph;
@@ -288,15 +677,41 @@ export function createDesktopPointerDragController({
 
     tracked.cardWidth = width;
     tracked.cardHeight = height;
-    tracked.grabOffsetX = Math.min(Math.max(anchorX - rect.left, 10), Math.max(10, width - 10));
-    tracked.grabOffsetY = Math.min(Math.max(anchorY - rect.top, 10), Math.max(10, height - 10));
+    if (rect.width > 0 && rect.height > 0) {
+      tracked.grabOffsetX = Math.min(Math.max(anchorX - rect.left, 8), Math.max(8, width - 8));
+      tracked.grabOffsetY = Math.min(Math.max(anchorY - rect.top, 8), Math.max(8, height - 8));
+    } else {
+      tracked.grabOffsetX = Math.min(24, Math.round(width / 2));
+      tracked.grabOffsetY = Math.min(24, Math.round(height / 2));
+    }
 
     placeholderEl = createPlaceholderForCard(cardEl, kind, { width, height });
+    tracked.placeholderBaseSnapshot = getElementStyleSnapshot(placeholderEl);
+
+    // If card was pinned on its origin grid, start placeholder at its exact pinned coordinates
+    const origFixedRow = Number(cardEl.dataset?.fixedRow);
+    const origFixedCol = Number(cardEl.dataset?.fixedColumn);
+    if (
+      cardEl.dataset?.fixedCell === 'true' &&
+      Number.isInteger(origFixedRow) &&
+      Number.isInteger(origFixedCol)
+    ) {
+      const defaultSpan = readCardDefaultSpan(cardEl, kind);
+      placeholderEl.style.gridColumn = `${origFixedCol + 1} / span ${defaultSpan.colSpan}`;
+      placeholderEl.style.gridRow = `${origFixedRow + 1} / span ${defaultSpan.rowSpan}`;
+      placeholderEl.classList.add('is-cell-drop-preview');
+      placeholderEl.dataset.previewRow = String(origFixedRow);
+      placeholderEl.dataset.previewColumn = String(origFixedCol);
+      placeholderEl.dataset.previewValid = 'true';
+    }
+
     if (cardEl.parentNode) {
       cardEl.parentNode.insertBefore(placeholderEl, cardEl);
     }
 
     cardEl.classList.add('dragging', 'pointer-dragging', 'desktop-floating-card');
+    cardEl.style.removeProperty?.('grid-column');
+    cardEl.style.removeProperty?.('grid-row');
     cardEl.style.position = 'fixed';
     cardEl.style.top = '0px';
     cardEl.style.left = '0px';
@@ -318,26 +733,41 @@ export function createDesktopPointerDragController({
     tracked.cardEl.style.transform = `translate3d(${x}px, ${y}px, 0) scale(1.03)`;
   }
 
-  function getGridCardsExcludingDragged(gridEl) {
+  function isPinnedDesktopCard(cardEl) {
+    if (!cardEl) return false;
+    return cardEl.dataset?.fixedCell === 'true';
+  }
+
+  function getGridCardsExcludingDragged(gridEl, { includePinned = false } = {}) {
     if (!gridEl) return [];
     return Array.from(
       gridEl.querySelectorAll('[data-placement-kind][data-placement-id]')
-    ).filter((node) => node !== tracked?.cardEl);
+    ).filter((node) => node !== tracked?.cardEl && (includePinned || !isPinnedDesktopCard(node)));
   }
 
   function captureGridCardRects(gridEl) {
     const map = new Map();
     if (!gridEl) return map;
-    const cards = getGridCardsExcludingDragged(gridEl);
+    const cards = getGridCardsExcludingDragged(gridEl, { includePinned: false });
     for (const card of cards) {
       map.set(card, card.getBoundingClientRect());
     }
     return map;
   }
 
-  function playFlipForGrid(gridEl, beforeRects) {
+  function captureAllGridCardRects(gridEl) {
+    const map = new Map();
+    if (!gridEl) return map;
+    const cards = getGridCardsExcludingDragged(gridEl, { includePinned: true });
+    for (const card of cards) {
+      map.set(card, card.getBoundingClientRect());
+    }
+    return map;
+  }
+
+  function playFlipForGrid(gridEl, beforeRects, { includePinned = false } = {}) {
     if (!gridEl || !beforeRects || beforeRects.size === 0) return;
-    const cards = getGridCardsExcludingDragged(gridEl);
+    const cards = getGridCardsExcludingDragged(gridEl, { includePinned });
     for (const card of cards) {
       const prev = beforeRects.get(card);
       if (!prev) continue;
@@ -404,8 +834,288 @@ export function createDesktopPointerDragController({
     return null;
   }
 
+  function isCellDropEnabledForGrid(gridEl, pageId, viewId) {
+    if (!tracked || !gridEl) return false;
+    if (tracked.kind !== 'site' && tracked.kind !== 'widget') return false;
+    if (typeof planCellDrop !== 'function' || typeof onCommitCellDrop !== 'function') {
+      return false;
+    }
+    if (gridEl.dataset?.folderId || gridEl.classList?.contains?.('folder-detail-grid')) {
+      return false;
+    }
+    if (!gridEl.classList?.contains?.('desktop-mixed-grid')) {
+      return false;
+    }
+    const pageEl = gridEl.closest?.('.springboard-page');
+    if (pageEl && pageEl.dataset?.subViewIndex !== undefined) {
+      if (Number(pageEl.dataset.subViewIndex) !== 0) {
+        return false;
+      }
+    }
+    if (typeof canUseCellDropForGrid === 'function') {
+      return Boolean(
+        canUseCellDropForGrid({
+          gridEl,
+          pageId: pageId || gridEl.dataset?.pageId || getCurrentPageId(),
+          viewId: viewId || gridEl.dataset?.viewId || pageEl?.dataset?.viewId || getCurrentViewId?.() || null,
+          kind: tracked.kind,
+          id: tracked.id,
+          fromPageId: tracked.fromPageId,
+          fromFolderId: tracked.fromFolderId || null,
+        })
+      );
+    }
+    return true;
+  }
+
+  function syncPlaceholderSizeAttributesForTarget(spanInfo) {
+    if (!placeholderEl || !spanInfo) return;
+    if (tracked?.kind === 'widget') {
+      const nextDisplaySize = spanInfo.displaySize;
+      if (
+        typeof nextDisplaySize === 'string' &&
+        nextDisplaySize &&
+        placeholderEl.getAttribute('data-widget-size') !== nextDisplaySize
+      ) {
+        placeholderEl.dataset.widgetSize = nextDisplaySize;
+        placeholderEl.setAttribute('data-widget-size', nextDisplaySize);
+      }
+    }
+  }
+
+  function applyCellDropPreviewOnGrid(targetGrid, clientX, clientY) {
+    if (!tracked || !placeholderEl || !targetGrid) return false;
+    const toPageId = targetGrid.dataset?.pageId || getCurrentPageId();
+    const targetViewId =
+      targetGrid.dataset?.viewId ||
+      targetGrid.closest?.('.springboard-page')?.dataset?.viewId ||
+      getCurrentViewId?.() ||
+      null;
+
+    // Restore any prior preview mutations on other grids if the user switched pages
+    if (tracked.cellPreviewState?.gridEl && tracked.cellPreviewState.gridEl !== targetGrid) {
+      restoreCellPreviewGridMutations(tracked.cellPreviewState.gridEl, { animateFlip: false });
+    }
+
+    const spanInfo =
+      typeof getCellDropSpan === 'function'
+        ? getCellDropSpan({
+            kind: tracked.kind,
+            id: tracked.id,
+            fromPageId: tracked.fromPageId,
+            fromFolderId: tracked.fromFolderId || null,
+            toPageId,
+            targetViewId,
+          })
+        : null;
+
+    const fallbackSpan = readCardDefaultSpan(tracked.cardEl, tracked.kind, spanInfo?.metrics);
+    const colSpan = Math.max(1, Number(spanInfo?.colSpan) || fallbackSpan.colSpan);
+    const rowSpan = Math.max(1, Number(spanInfo?.rowSpan) || fallbackSpan.rowSpan);
+    const metrics = spanInfo?.metrics || null;
+
+    const geometry = measureDesktopGridGeometry(targetGrid, metrics);
+    if (!geometry) return false;
+
+    // Sensibly adapt grab offset if card footprint on target grid differs from lifted card rect
+    const expectedWidth =
+      colSpan * geometry.avgColWidth + Math.max(0, colSpan - 1) * geometry.colGap;
+    const expectedHeight =
+      rowSpan * geometry.rowHeight + Math.max(0, rowSpan - 1) * geometry.rowGap;
+    const ratioX =
+      tracked.cardWidth > 0 ? Math.min(1, Math.max(0, tracked.grabOffsetX / tracked.cardWidth)) : 0.5;
+    const ratioY =
+      tracked.cardHeight > 0 ? Math.min(1, Math.max(0, tracked.grabOffsetY / tracked.cardHeight)) : 0.5;
+    const effectiveGrabX =
+      expectedWidth > 0 && Math.abs(expectedWidth - tracked.cardWidth) > geometry.avgColWidth * 0.45
+        ? ratioX * expectedWidth
+        : tracked.grabOffsetX;
+    const effectiveGrabY =
+      expectedHeight > 0 && Math.abs(expectedHeight - tracked.cardHeight) > geometry.rowHeight * 0.45
+        ? ratioY * expectedHeight
+        : tracked.grabOffsetY;
+
+    const resolvedCell = resolveGridAnchorCellFromPointer({
+      geometry,
+      clientX,
+      clientY,
+      grabOffsetX: effectiveGrabX,
+      grabOffsetY: effectiveGrabY,
+      colSpan,
+      rowSpan,
+    });
+    if (!resolvedCell) return false;
+
+    const candidateCell = { row: resolvedCell.row, column: resolvedCell.column };
+
+    const prevState = tracked.cellPreviewState;
+    if (
+      prevState &&
+      prevState.gridEl === targetGrid &&
+      prevState.pageId === toPageId &&
+      prevState.cell.row === candidateCell.row &&
+      prevState.cell.column === candidateCell.column &&
+      Boolean(prevState.fitsGrid) === Boolean(resolvedCell.fitsGrid) &&
+      placeholderEl.parentNode === targetGrid
+    ) {
+      targetGrid.classList.toggle('is-cell-drop-invalid', !prevState.valid);
+      return true;
+    }
+
+    const plan = resolvedCell.fitsGrid
+      ? planCellDrop({
+          kind: tracked.kind,
+          id: tracked.id,
+          fromPageId: tracked.fromPageId,
+          fromFolderId: tracked.fromFolderId || null,
+          toPageId,
+          targetViewId,
+          cell: candidateCell,
+        })
+      : null;
+
+    const isValid = Boolean(plan && plan.targetRect);
+    const beforeRects = captureAllGridCardRects(targetGrid);
+    const prevParent = placeholderEl.parentElement;
+
+    // Ensure placeholder is mounted in targetGrid without rebuilding existing cards
+    if (placeholderEl.parentNode !== targetGrid) {
+      const addTile = targetGrid.querySelector('.add-tile-card');
+      if (addTile && addTile.parentNode === targetGrid) {
+        targetGrid.insertBefore(placeholderEl, addTile);
+      } else {
+        targetGrid.appendChild(placeholderEl);
+      }
+    }
+
+    syncPlaceholderSizeAttributesForTarget(spanInfo);
+
+    // Build lookup of live cards on targetGrid by `kind:id` (excluding dragged card & any cross-page mirror of same site)
+    const gridCardsByKey = new Map();
+    const selfKey = `${tracked.kind}:${tracked.id}`;
+    Array.from(targetGrid.querySelectorAll('[data-placement-kind][data-placement-id]')).forEach(
+      (node) => {
+        if (node === tracked.cardEl) return;
+        const k = `${node.dataset.placementKind}:${node.dataset.placementId}`;
+        gridCardsByKey.set(k, node);
+      }
+    );
+
+    const nextDisplacedNodes = new Set();
+
+    // If cross-page dragging a site onto a page that already has a mirror of the same site, hide its mirror preview cleanly
+    if (tracked.fromPageId !== toPageId && gridCardsByKey.has(selfKey)) {
+      const mirrorNode = gridCardsByKey.get(selfKey);
+      if (mirrorNode) {
+        if (!tracked.cellPreviewSnapshots.has(mirrorNode)) {
+          tracked.cellPreviewSnapshots.set(mirrorNode, {
+            gridEl: targetGrid,
+            snapshot: getElementStyleSnapshot(mirrorNode),
+          });
+        }
+        mirrorNode.style.display = 'none';
+        mirrorNode.dataset.cellPreviewDisplaced = 'true';
+        nextDisplacedNodes.add(mirrorNode);
+      }
+    }
+
+    if (isValid) {
+      const { targetRect, moves = [] } = plan;
+      placeholderEl.classList.add('is-cell-drop-preview');
+      placeholderEl.classList.remove('is-cell-drop-invalid');
+      placeholderEl.style.gridColumn = `${targetRect.column + 1} / span ${targetRect.colSpan}`;
+      placeholderEl.style.gridRow = `${targetRect.row + 1} / span ${targetRect.rowSpan}`;
+      // Clear fixed pixel width/height overrides if multi-track widget or square card uses CSS grid track sizing
+      if (tracked.kind === 'widget' || String(placeholderEl.dataset?.siteSize || '') === 'square') {
+        placeholderEl.style.removeProperty?.('width');
+      }
+      placeholderEl.dataset.previewRow = String(targetRect.row);
+      placeholderEl.dataset.previewColumn = String(targetRect.column);
+      placeholderEl.dataset.previewValid = 'true';
+      targetGrid.classList.remove('is-cell-drop-invalid');
+
+      for (const mv of moves) {
+        const mvKey = `${mv.kind}:${mv.id}`;
+        const cardNode = gridCardsByKey.get(mvKey);
+        if (!cardNode || !mv.cell) continue;
+        if (!tracked.cellPreviewSnapshots.has(cardNode)) {
+          tracked.cellPreviewSnapshots.set(cardNode, {
+            gridEl: targetGrid,
+            snapshot: getElementStyleSnapshot(cardNode),
+          });
+        }
+        const mvSpan = readCardDefaultSpan(cardNode, mv.kind, metrics);
+        cardNode.style.gridColumn = `${mv.cell.column + 1} / span ${mvSpan.colSpan}`;
+        cardNode.style.gridRow = `${mv.cell.row + 1} / span ${mvSpan.rowSpan}`;
+        cardNode.dataset.cellPreviewDisplaced = 'true';
+        nextDisplacedNodes.add(cardNode);
+      }
+    } else {
+      // Invalid drop preview: restore any previously displaced pinned cards on this grid to their original spots,
+      // and show distinct invalid placeholder clamped inside visible grid tracks without displacing immovable cards.
+      const clampedCol = Math.max(
+        0,
+        Math.min(geometry.columns - Math.min(colSpan, geometry.columns), resolvedCell.previewColumn)
+      );
+      const clampedRow = Math.max(
+        0,
+        Math.min(geometry.maxRows - Math.min(rowSpan, geometry.maxRows), resolvedCell.previewRow)
+      );
+      const visColSpan = Math.min(colSpan, geometry.columns - clampedCol);
+      const visRowSpan = Math.min(rowSpan, geometry.maxRows - clampedRow);
+
+      placeholderEl.classList.add('is-cell-drop-preview', 'is-cell-drop-invalid');
+      placeholderEl.style.gridColumn = `${clampedCol + 1} / span ${Math.max(1, visColSpan)}`;
+      placeholderEl.style.gridRow = `${clampedRow + 1} / span ${Math.max(1, visRowSpan)}`;
+      if (tracked.kind === 'widget' || String(placeholderEl.dataset?.siteSize || '') === 'square') {
+        placeholderEl.style.removeProperty?.('width');
+      }
+      placeholderEl.dataset.previewRow = String(candidateCell.row);
+      placeholderEl.dataset.previewColumn = String(candidateCell.column);
+      placeholderEl.dataset.previewValid = 'false';
+      targetGrid.classList.add('is-cell-drop-invalid');
+    }
+
+    // Restore any cards on targetGrid that were displaced in a previous hover cell but are no longer displaced now
+    for (const [cardNode, rec] of Array.from(tracked.cellPreviewSnapshots.entries())) {
+      if (rec.gridEl === targetGrid && !nextDisplacedNodes.has(cardNode)) {
+        applyElementStyleSnapshot(cardNode, rec.snapshot);
+        if (cardNode?.dataset) {
+          delete cardNode.dataset.cellPreviewDisplaced;
+        }
+        tracked.cellPreviewSnapshots.delete(cardNode);
+      }
+    }
+
+    tracked.previewPageId = toPageId;
+    tracked.previewViewId = targetViewId;
+    tracked.previewFolderId = null;
+    tracked.previewGridEl = targetGrid;
+    tracked.cellPreviewState = {
+      mode: 'cell',
+      gridEl: targetGrid,
+      pageId: toPageId,
+      viewId: targetViewId,
+      cell: candidateCell,
+      fitsGrid: Boolean(resolvedCell.fitsGrid),
+      valid: isValid,
+      plan: isValid ? plan : null,
+    };
+
+    syncEmptyDropzoneVisibility(targetGrid);
+    if (prevParent && prevParent !== targetGrid) {
+      syncEmptyDropzoneVisibility(prevParent);
+    }
+
+    playFlipForGrid(targetGrid, beforeRects, { includePinned: true });
+    return true;
+  }
+
   function movePlaceholderInGrid(targetGrid, beforeNode) {
     if (!placeholderEl || !targetGrid) return false;
+    if (tracked?.cellPreviewState) {
+      restoreCellPreviewGridMutations(null, { animateFlip: false });
+    }
     const addTile = targetGrid.querySelector('.add-tile-card');
     const effectiveBeforeNode = beforeNode || addTile || null;
 
@@ -672,6 +1382,7 @@ export function createDesktopPointerDragController({
       if (
         curr !== tracked?.cardEl &&
         curr !== placeholderEl &&
+        !isPinnedDesktopCard(curr) &&
         curr.dataset?.placementKind &&
         curr.dataset?.placementId
       ) {
@@ -702,6 +1413,25 @@ export function createDesktopPointerDragController({
       beforeKind: nextCard ? nextCard.dataset.placementKind : null,
       beforeId: nextCard ? nextCard.dataset.placementId : null,
     };
+  }
+
+  function refreshActiveDesktopHoverAfterSwitch() {
+    if (!tracked || !tracked.isDragging) return;
+    const nextGrid = findGridElementForViewOrPage({
+      viewId: getCurrentViewId?.(),
+      pageId: getCurrentPageId(),
+    });
+    if (!nextGrid) return;
+    const hitNow = inspectPointTarget(tracked.lastX, tracked.lastY);
+    if (hitNow && (hitNow.type === 'grid' || hitNow.type === 'card' || hitNow.type === 'placeholder')) {
+      updateHoverTarget(hitNow, tracked.lastX, tracked.lastY);
+      return;
+    }
+    // If pointer is still over a tab or screen edge right after switching, only prepare non-cell sub-views;
+    // primary cell-drop grids wait until the pointer enters the grid or use pointer coordinates directly.
+    if (!isCellDropEnabledForGrid(nextGrid, nextGrid.dataset?.pageId, nextGrid.dataset?.viewId)) {
+      movePlaceholderInGrid(nextGrid, null);
+    }
   }
 
   function updateEdgeViewHover(clientX) {
@@ -745,21 +1475,27 @@ export function createDesktopPointerDragController({
       edgeViewDirection = 0;
       if (!tracked || !tracked.isDragging || !isJiggleMode() || !dir) return;
       clearFolderMergePreview();
+      restoreCellPreviewGridMutations(null, { animateFlip: false });
+      removePlaceholderForTransientPageSwitch();
       const switched = onSwitchAdjacentView(dir);
       if (switched) {
-        const nextGrid = findGridElementForViewOrPage({
-          viewId: getCurrentViewId?.(),
-          pageId: getCurrentPageId(),
-        });
-        if (nextGrid) {
-          movePlaceholderInGrid(nextGrid, null);
-        }
+        refreshActiveDesktopHoverAfterSwitch();
         edgeViewDirection = dir;
         edgeViewTimer = setTimeout(triggerEdgeStep, EDGE_VIEW_SWITCH_MS + 180);
       }
     };
 
     edgeViewTimer = setTimeout(triggerEdgeStep, EDGE_VIEW_SWITCH_MS);
+  }
+
+  function removePlaceholderForTransientPageSwitch() {
+    if (!placeholderEl) return;
+    const prevParent = placeholderEl.parentElement;
+    restorePlaceholderBaseGeometry();
+    if (prevParent) {
+      placeholderEl.remove();
+      syncEmptyDropzoneVisibility(prevParent);
+    }
   }
 
   function armOrMaintainFolderMergeHover(hitInfo) {
@@ -813,8 +1549,28 @@ export function createDesktopPointerDragController({
       pageId: getCurrentPageId(),
     });
     if (desktopGrid) {
-      const beforeNode = resolveInsertionNodeInGrid(desktopGrid, clientX, clientY);
-      movePlaceholderInGrid(desktopGrid, beforeNode);
+      if (isCellDropEnabledForGrid(desktopGrid, desktopGrid.dataset?.pageId, desktopGrid.dataset?.viewId)) {
+        applyCellDropPreviewOnGrid(desktopGrid, clientX, clientY);
+      } else {
+        const beforeNode = resolveInsertionNodeInGrid(desktopGrid, clientX, clientY);
+        movePlaceholderInGrid(desktopGrid, beforeNode);
+      }
+    }
+  }
+
+  function restorePreviewWhenLeavingDesktopGrid() {
+    if (!tracked?.cellPreviewState) return;
+    restoreCellPreviewGridMutations(null, { animateFlip: true });
+    // If placeholder was temporarily moved into another page's grid, detach it so origin/previous page looks untouched
+    if (placeholderEl && placeholderEl.parentElement && placeholderEl.parentElement !== tracked.originalParent) {
+      const prevGrid = placeholderEl.parentElement;
+      placeholderEl.remove();
+      syncEmptyDropzoneVisibility(prevGrid);
+    } else if (placeholderEl && tracked.originalParent && tracked.originalCardFixedOrigin) {
+      const { row, column, colSpan, rowSpan } = tracked.originalCardFixedOrigin;
+      placeholderEl.style.gridColumn = `${column + 1} / span ${colSpan}`;
+      placeholderEl.style.gridRow = `${row + 1} / span ${rowSpan}`;
+      placeholderEl.classList.add('is-cell-drop-preview');
     }
   }
 
@@ -830,6 +1586,7 @@ export function createDesktopPointerDragController({
     if (!hitInfo) {
       clearTabHoverTimer();
       clearFolderMergePreview();
+      restorePreviewWhenLeavingDesktopGrid();
       return;
     }
 
@@ -842,6 +1599,7 @@ export function createDesktopPointerDragController({
 
     if (hitInfo.type === 'tab') {
       clearFolderMergePreview();
+      restorePreviewWhenLeavingDesktopGrid();
       if (tracked.previewFolderId) {
         transitionFromFolderModalToDesktopGrid(clientX, clientY);
       }
@@ -861,14 +1619,10 @@ export function createDesktopPointerDragController({
             tabHoverTimer = null;
             tabHoverTargetPageId = null;
             if (tracked?.isDragging) {
+              restoreCellPreviewGridMutations(null, { animateFlip: false });
+              removePlaceholderForTransientPageSwitch();
               onSwitchPageById?.(targetPageId, targetViewId);
-              const nextGrid = findGridElementForViewOrPage({
-                viewId: targetViewId || getCurrentViewId?.(),
-                pageId: targetPageId,
-              });
-              if (nextGrid) {
-                movePlaceholderInGrid(nextGrid, null);
-              }
+              refreshActiveDesktopHoverAfterSwitch();
             }
           }, TAB_HOVER_SWITCH_MS);
         }
@@ -882,8 +1636,17 @@ export function createDesktopPointerDragController({
 
     if (hitInfo.type === 'placeholder') {
       clearFolderMergePreview();
-      if (hitInfo.gridEl) {
-        hitInfo.gridEl.classList.add('drag-target-active');
+      const gridEl =
+        hitInfo.gridEl ||
+        findGridElementForViewOrPage({
+          viewId: hitInfo.viewId,
+          pageId: hitInfo.pageId,
+        });
+      if (gridEl) {
+        gridEl.classList.add('drag-target-active');
+        if (isCellDropEnabledForGrid(gridEl, hitInfo.pageId, hitInfo.viewId)) {
+          applyCellDropPreviewOnGrid(gridEl, clientX, clientY);
+        }
       }
       return;
     }
@@ -910,17 +1673,32 @@ export function createDesktopPointerDragController({
       );
 
       if (eligibleForFolderMerge && isPointInFolderMergeCenterZone(cardEl, clientX, clientY)) {
-        // Center zone hover: hold placeholder steady and start/maintain 600ms folder merge timer
+        // Center zone hover: hold steady, restore any displaced cell preview so target card stays still, and arm 600ms folder merge timer
+        if (tracked.cellPreviewState) {
+          restoreCellPreviewGridMutations(null, { animateFlip: true });
+        }
         cardEl.classList.add('drag-over-card');
         armOrMaintainFolderMergeHover(hitInfo);
         return;
       }
 
-      // Edge zone or non-mergeable card: immediately cancel folder merge preview and reorder normally
+      // Edge zone or non-mergeable card: immediately cancel folder merge preview
       clearFolderMergePreview();
+
+      if (gridEl && isCellDropEnabledForGrid(gridEl, hitInfo.pageId, hitInfo.viewId)) {
+        gridEl.classList.add('drag-target-active');
+        applyCellDropPreviewOnGrid(gridEl, clientX, clientY);
+        return;
+      }
+
       cardEl.classList.add('drag-over-card');
 
       if (gridEl && placeholderEl) {
+        if (isPinnedDesktopCard(cardEl)) {
+          const beforeNode = resolveInsertionNodeInGrid(gridEl, clientX, clientY);
+          movePlaceholderInGrid(gridEl, beforeNode);
+          return;
+        }
         const cards = Array.from(gridEl.children);
         const phIdx = cards.indexOf(placeholderEl);
         const targetIdx = cards.indexOf(cardEl);
@@ -953,8 +1731,12 @@ export function createDesktopPointerDragController({
         });
       if (gridEl) {
         gridEl.classList.add('drag-target-active');
-        const beforeNode = resolveInsertionNodeInGrid(gridEl, clientX, clientY);
-        movePlaceholderInGrid(gridEl, beforeNode);
+        if (isCellDropEnabledForGrid(gridEl, hitInfo.pageId, hitInfo.viewId)) {
+          applyCellDropPreviewOnGrid(gridEl, clientX, clientY);
+        } else {
+          const beforeNode = resolveInsertionNodeInGrid(gridEl, clientX, clientY);
+          movePlaceholderInGrid(gridEl, beforeNode);
+        }
       }
     }
   }
@@ -1042,7 +1824,21 @@ export function createDesktopPointerDragController({
     if (!kind || !id || !fromPageId) return false;
 
     const originalNextSibling = cardEl.nextSibling;
-    const originalStyleAttr = cardEl.getAttribute('style');
+    const originalStyleSnapshot = getElementStyleSnapshot(cardEl);
+    const origFixedRow = Number(cardEl.dataset?.fixedRow);
+    const origFixedCol = Number(cardEl.dataset?.fixedColumn);
+    const origSpan = readCardDefaultSpan(cardEl, kind);
+    const originalCardFixedOrigin =
+      cardEl.dataset?.fixedCell === 'true' &&
+      Number.isInteger(origFixedRow) &&
+      Number.isInteger(origFixedCol)
+        ? {
+            row: origFixedRow,
+            column: origFixedCol,
+            colSpan: origSpan.colSpan,
+            rowSpan: origSpan.rowSpan,
+          }
+        : null;
 
     tracked = {
       pointerId,
@@ -1058,7 +1854,11 @@ export function createDesktopPointerDragController({
       previewGridEl: originalParent,
       originalParent,
       originalNextSibling,
-      originalStyleAttr,
+      originalStyleSnapshot,
+      originalCardFixedOrigin,
+      placeholderBaseSnapshot: null,
+      cellPreviewSnapshots: new Map(),
+      cellPreviewState: null,
       startX: clientX,
       startY: clientY,
       lastX: clientX,
@@ -1339,7 +2139,7 @@ export function createDesktopPointerDragController({
 
     const finalTarget = inspectPointTarget(clientX, clientY);
 
-    // Check if a 600ms folder merge preview was ready and pointer is still on that target card's center zone
+    // 1. Precedence: >600ms folder center dwell merge if ready and pointer is still in that target card's center zone
     if (
       folderMergeReadyTarget &&
       finalTarget?.type === 'card' &&
@@ -1362,15 +2162,13 @@ export function createDesktopPointerDragController({
       return;
     }
 
+    // 2. Dropped outside desktop / tabs: cancel cleanly and restore preview
     if (!finalTarget) {
       cleanup({ wasDragging: true, restoreOrigin: true });
       return;
     }
 
-    if (finalTarget.type === 'card' || finalTarget.type === 'grid') {
-      updateHoverTarget(finalTarget, clientX, clientY);
-    }
-
+    // 3. Dropped directly onto a navigation page tab / pagination dot: preserve existing drop-to-page behavior
     if (finalTarget.type === 'tab' && finalTarget.pageId) {
       cleanup({ wasDragging: true, restoreOrigin: true });
       if (dragSnapshot.fromFolderId && typeof onCommitFolderExtractToDesktop === 'function') {
@@ -1408,6 +2206,54 @@ export function createDesktopPointerDragController({
       return;
     }
 
+    if (
+      finalTarget.type === 'card' ||
+      finalTarget.type === 'grid' ||
+      finalTarget.type === 'placeholder'
+    ) {
+      updateHoverTarget(finalTarget, clientX, clientY);
+    }
+
+    // 4. Precise desktop grid cell drop (site/widget on navigation page primary view subViewIndex === 0)
+    const targetGridEl =
+      finalTarget.gridEl ||
+      (finalTarget.element?.classList?.contains?.('apps-grid') ? finalTarget.element : null) ||
+      tracked.previewGridEl;
+
+    if (
+      targetGridEl &&
+      isCellDropEnabledForGrid(targetGridEl, finalTarget.pageId, finalTarget.viewId)
+    ) {
+      applyCellDropPreviewOnGrid(targetGridEl, clientX, clientY);
+      const preview = tracked.cellPreviewState;
+
+      // Never fall back to ordinary sort on a failed precise cell drop!
+      if (!preview || !preview.valid || !preview.plan || !preview.cell) {
+        cleanup({ wasDragging: true, restoreOrigin: true });
+        return;
+      }
+
+      const commitCellPayload = {
+        fromPageId: dragSnapshot.fromPageId,
+        fromFolderId: dragSnapshot.fromFolderId || null,
+        toPageId: preview.pageId || dragSnapshot.fromPageId,
+        targetViewId: preview.viewId || null,
+        kind: dragSnapshot.kind,
+        id: dragSnapshot.id,
+        cell: { row: preview.cell.row, column: preview.cell.column },
+      };
+
+      // Re-plan & apply in app callback before final cleanup if needed; restore cleanly first if commit returns false
+      cleanup({
+        wasDragging: true,
+        restoreOrigin: true,
+        keepDisplacedStyles: false,
+      });
+      onCommitCellDrop(commitCellPayload);
+      return;
+    }
+
+    // 5. Ordinary reorder / move (folders, folder modal grid, or comfort mode sub-views > 0)
     const commitTarget = readPlaceholderCommitTarget();
     cleanup({ wasDragging: true, restoreOrigin: false });
 

@@ -1,5 +1,22 @@
-import { DEFAULT_WIDGET_DEFINITIONS, createDefaultWidgetState, normalizeWidgetSize } from './feature-client.js';
+import {
+  DEFAULT_WIDGET_DEFINITIONS,
+  createDefaultWidgetState,
+  getDefaultSizeForWidgetType,
+  normalizeWidgetSize,
+} from './feature-client.js';
 import { safeHttpUrl } from './dom.js';
+import {
+  MIN_CELL_ROW,
+  MAX_CELL_ROW,
+  MIN_CELL_COLUMN,
+  MAX_CELL_COLUMN,
+  FIXED_CELL_KINDS,
+  isFixedCellCapableKind,
+  isValidPlacementCell,
+  normalizePlacementCell,
+  formatCellKey,
+  attachOptionalPlacementCell,
+} from './desktop-cells.js';
 import {
   MAX_DESKTOP_FOLDERS,
   MIN_FOLDER_SITES,
@@ -21,6 +38,14 @@ import {
 } from './desktop-folders.js';
 
 export {
+  MIN_CELL_ROW,
+  MAX_CELL_ROW,
+  MIN_CELL_COLUMN,
+  MAX_CELL_COLUMN,
+  FIXED_CELL_KINDS,
+  isFixedCellCapableKind,
+  isValidPlacementCell,
+  normalizePlacementCell,
   MAX_DESKTOP_FOLDERS,
   MIN_FOLDER_SITES,
   MAX_FOLDER_SITES,
@@ -159,12 +184,15 @@ export function normalizeWidgetLayout(rawLayout, definitions = DEFAULT_WIDGET_DE
   }
 
   for (const def of defs) {
+    // Opt-in (defaultEnabled:false) daily widgets are never appended until the user adds one;
+    // their first row is created by enableWidgetOnPage.
+    if (def?.defaultEnabled === false) continue;
     if (!seenIds.has(def.type)) {
       seenIds.add(def.type);
       list.push({
         id: def.type,
         type: def.type,
-        enabled: !hasExplicitLayout,
+        enabled: !hasExplicitLayout && def.defaultEnabled !== false,
         order: list.length,
         config: structuredClone(def.defaultConfig || {}),
       });
@@ -247,6 +275,7 @@ export function reconcileDesktopWithLayout(
     if (!kind || !isValidPlacementId(id)) continue;
 
     const pageId = validPageIds.has(entry.pageId) ? entry.pageId : 'all';
+    const pageChanged = entry.pageId !== pageId;
     const pageSeen = perPageSeen.get(pageId);
     const key = `${kind}:${id}`;
     if (!pageSeen || pageSeen.has(key)) continue;
@@ -273,8 +302,14 @@ export function reconcileDesktopWithLayout(
       placedFolders.add(id);
     }
 
+    const normalizedCell = !pageChanged ? normalizePlacementCell(entry.cell, kind) : null;
     pageSeen.add(key);
-    perPageBuckets.get(pageId).push({ kind, id, pageId });
+    perPageBuckets.get(pageId).push({
+      kind,
+      id,
+      pageId,
+      ...(normalizedCell ? { cell: normalizedCell } : {}),
+    });
   }
 
   // Ensure every enabled widget in layout has exactly one placement
@@ -329,6 +364,7 @@ export function reconcileDesktopWithLayout(
     }
 
     const finalPageSeen = new Set();
+    const finalPageSeenCells = new Set();
     let order = 0;
     for (const item of resolvedBucket) {
       if (placements.length >= MAX_DESKTOP_PLACEMENTS) break;
@@ -339,12 +375,18 @@ export function reconcileDesktopWithLayout(
       const key = `${item.kind}:${item.id}`;
       if (finalPageSeen.has(key)) continue;
       finalPageSeen.add(key);
-      placements.push({
-        kind: item.kind,
-        id: item.id,
-        pageId: page.id,
-        order: order++,
-      });
+      placements.push(
+        attachOptionalPlacementCell(
+          {
+            kind: item.kind,
+            id: item.id,
+            pageId: page.id,
+            order: order++,
+          },
+          item.cell,
+          finalPageSeenCells
+        )
+      );
     }
   }
 
@@ -485,6 +527,7 @@ export function doesDesktopMatchLegacyDefaultSnapshot(
     defaultPages = DEFAULT_SYSTEM_PAGES,
     defaultSites = [],
     definitions = DEFAULT_WIDGET_DEFINITIONS,
+    omitHomeSiteIds = [],
     hasUnsyncedLayout = false,
     hasRestoreMarker = false,
   } = {}
@@ -502,6 +545,7 @@ export function doesDesktopMatchLegacyDefaultSnapshot(
     sites: defaultSites,
     layout: createDefaultWidgetState(defs).layout,
     definitions: defs,
+    omitHomeSiteIds,
   }).desktop;
 
   const checkPagesMatch = (candidatePages) => {
@@ -543,13 +587,56 @@ export function doesDesktopMatchLegacyDefaultSnapshot(
       p.kind !== d.kind ||
       p.id !== d.id ||
       p.pageId !== d.pageId ||
-      Number(p.order) !== Number(d.order)
+      Number(p.order) !== Number(d.order) ||
+      Boolean(p.cell) !== Boolean(d.cell)
     ) {
       return false;
     }
   }
 
   return true;
+}
+
+export function applyDefaultWidgetSizesToPristineDesktop(
+  desktop,
+  layout,
+  options = {}
+) {
+  if (!Array.isArray(layout)) return layout;
+  if (!doesDesktopMatchLegacyDefaultSnapshot(desktop, options)) {
+    return layout;
+  }
+
+  const definitions =
+    Array.isArray(options?.definitions) && options.definitions.length > 0
+      ? options.definitions
+      : DEFAULT_WIDGET_DEFINITIONS;
+
+  let changed = false;
+  const nextLayout = layout.map((item) => {
+    if (!item || typeof item !== 'object') return item;
+    const type = String(item.type || '').trim();
+    const id = String(item.id || '').trim();
+    if (!type || id !== type || item.enabled === false) {
+      return item;
+    }
+    if (Object.hasOwn(item, 'size') && item.size !== undefined) {
+      return item;
+    }
+    const defaultSize = getDefaultSizeForWidgetType(type, definitions);
+    if (!defaultSize) {
+      return item;
+    }
+    changed = true;
+    const { config, ...fields } = item;
+    return {
+      ...fields,
+      size: defaultSize,
+      config,
+    };
+  });
+
+  return changed ? nextLayout : layout;
 }
 
 export function stripDefaultSitePlacementsFromHomePage(
@@ -586,7 +673,10 @@ export function getPagePlacements(desktop, pageId) {
   if (!desktop || !Array.isArray(desktop.placements)) return [];
   return desktop.placements
     .filter(p => p && p.pageId === pageId)
-    .slice()
+    .map((p) => {
+      const cell = normalizePlacementCell(p.cell, p.kind);
+      return cell ? { ...p, cell } : { ...p };
+    })
     .sort((a, b) => Number(a.order) - Number(b.order));
 }
 
@@ -619,11 +709,13 @@ export function getRenderablePageItems({ desktop, pageId, sites = [], layout = [
     if (placement.kind === 'site') {
       const site = siteMap.get(placement.id);
       if (!site) continue;
+      const cell = normalizePlacementCell(placement.cell, 'site');
       items.push({
         kind: 'site',
         id: placement.id,
         pageId,
         order: placement.order,
+        ...(cell ? { cell } : {}),
         site,
       });
     } else if (placement.kind === 'folder') {
@@ -653,16 +745,78 @@ export function getRenderablePageItems({ desktop, pageId, sites = [], layout = [
     } else if (placement.kind === 'widget') {
       const widget = widgetMap.get(placement.id);
       if (!widget) continue;
+      const cell = normalizePlacementCell(placement.cell, 'widget');
       items.push({
         kind: 'widget',
         id: placement.id,
         pageId,
         order: placement.order,
+        ...(cell ? { cell } : {}),
         widget,
       });
     }
   }
   return items;
+}
+
+function normalizePlacementsForDesktopResult(pages, rawPlacements) {
+  const validPageIds = new Set(pages.map((p) => p.id));
+  const perPageSeenKeys = new Map(pages.map((p) => [p.id, new Set()]));
+  const perPageSeenCells = new Map(pages.map((p) => [p.id, new Set()]));
+  const result = [];
+
+  for (const raw of Array.isArray(rawPlacements) ? rawPlacements : []) {
+    if (!raw || typeof raw !== 'object') continue;
+    if (result.length >= MAX_DESKTOP_PLACEMENTS) break;
+    const kind =
+      raw.kind === 'widget'
+        ? 'widget'
+        : raw.kind === 'folder'
+          ? 'folder'
+          : raw.kind === 'site'
+            ? 'site'
+            : null;
+    const id = String(raw.id || '').trim();
+    if (!kind || !isValidPlacementId(id)) continue;
+    const pageId = validPageIds.has(raw.pageId) ? raw.pageId : 'all';
+    const pageChanged = raw.pageId !== pageId;
+    const seenKeys = perPageSeenKeys.get(pageId);
+    const seenCells = perPageSeenCells.get(pageId);
+    const key = `${kind}:${id}`;
+    if (!seenKeys || seenKeys.has(key)) continue;
+    seenKeys.add(key);
+
+    result.push(
+      attachOptionalPlacementCell(
+        {
+          kind,
+          id,
+          pageId,
+          order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : result.length,
+        },
+        pageChanged ? null : raw.cell,
+        seenCells
+      )
+    );
+  }
+
+  // Reindex order sequentially per page while keeping relative order
+  const grouped = new Map(pages.map((p) => [p.id, []]));
+  for (const p of result) {
+    grouped.get(p.pageId)?.push(p);
+  }
+  const ordered = [];
+  for (const page of pages) {
+    const list = (grouped.get(page.id) || []).sort((a, b) => Number(a.order) - Number(b.order));
+    list.forEach((entry, idx) => {
+      ordered.push({
+        ...entry,
+        ...(entry.cell ? { cell: { row: entry.cell.row, column: entry.cell.column } } : {}),
+        order: idx,
+      });
+    });
+  }
+  return ordered;
 }
 
 function buildDesktopResult(desktop, pages, placements, folders = undefined) {
@@ -677,17 +831,19 @@ function buildDesktopResult(desktop, pages, placements, folders = undefined) {
     Array.isArray(desktop?.folders) ||
     Array.isArray(resolvedFolders);
 
+  const sanitizedPlacements = normalizePlacementsForDesktopResult(pages, placements);
+
   const candidate = isV2
     ? {
         schemaVersion: 2,
         pages,
-        placements: placements.slice(0, MAX_DESKTOP_PLACEMENTS),
+        placements: sanitizedPlacements,
         folders: Array.isArray(resolvedFolders) ? resolvedFolders : [],
       }
     : {
         schemaVersion: 1,
         pages,
-        placements: placements.slice(0, MAX_DESKTOP_PLACEMENTS),
+        placements: sanitizedPlacements,
       };
 
   return isV2 ? finalizeDesktopFoldersAndPlacements(candidate, { forceV2: true }) : candidate;
@@ -702,18 +858,25 @@ function rebuildPlacementsFromPageItems(desktop, pageId, nextPageItems) {
       ? nextPageItems
       : getPagePlacements(desktop, page.id);
     const seen = new Set();
+    const seenCells = new Set();
     let order = 0;
     for (const item of list) {
       if (!item || !isValidPlacementId(item.id)) continue;
       const key = `${item.kind}:${item.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      nextPlacements.push({
-        kind: item.kind,
-        id: item.id,
-        pageId: page.id,
-        order: order++,
-      });
+      nextPlacements.push(
+        attachOptionalPlacementCell(
+          {
+            kind: item.kind,
+            id: item.id,
+            pageId: page.id,
+            order: order++,
+          },
+          item.cell,
+          seenCells
+        )
+      );
     }
   }
 
@@ -844,6 +1007,9 @@ export function movePlacementToPage(
       const movedEntry = { kind, id, pageId: toPageId, order: list.length };
 
       if (existingIdx !== -1) {
+        // Moved across pages onto a page that already held a placement for this item: clear old pin
+        const { cell: _clearedCell, ...existingUnpinned } = list[existingIdx];
+        list[existingIdx] = existingUnpinned;
         if (targetKind && targetId && !(targetKind === kind && targetId === id)) {
           const [existing] = list.splice(existingIdx, 1);
           const targetIdx = list.findIndex(item => item.kind === targetKind && item.id === targetId);
@@ -865,14 +1031,21 @@ export function movePlacementToPage(
       }
     }
 
+    const seenCells = new Set();
     list.forEach((item, idx) => {
       if (nextPlacements.length < MAX_DESKTOP_PLACEMENTS) {
-        nextPlacements.push({
-          kind: item.kind,
-          id: item.id,
-          pageId: page.id,
-          order: idx,
-        });
+        nextPlacements.push(
+          attachOptionalPlacementCell(
+            {
+              kind: item.kind,
+              id: item.id,
+              pageId: page.id,
+              order: idx,
+            },
+            item.cell,
+            seenCells
+          )
+        );
       }
     });
   }
@@ -903,6 +1076,11 @@ export function placeDesktopItemBefore(
   const nextPlacements = [];
   for (const page of pages) {
     let list = getPagePlacements(desktop, page.id);
+    let preservedCell = null;
+    if (fromPageId === toPageId && page.id === toPageId && isFixedCellCapableKind(kind)) {
+      const existingSamePage = list.find(item => item.kind === kind && item.id === id);
+      preservedCell = normalizePlacementCell(existingSamePage?.cell, kind);
+    }
 
     if (kind === 'widget' || kind === 'folder') {
       list = list.filter(item => !(item.kind === kind && item.id === id));
@@ -912,7 +1090,13 @@ export function placeDesktopItemBefore(
 
     if (page.id === toPageId) {
       deduplicateMovedItemOnTargetPage(desktop, { toPageId, kind, id, list, folders });
-      const movedEntry = { kind, id, pageId: toPageId, order: list.length };
+      const movedEntry = {
+        kind,
+        id,
+        pageId: toPageId,
+        order: list.length,
+        ...(preservedCell ? { cell: preservedCell } : {}),
+      };
       if (effectiveBeforeKind && effectiveBeforeId) {
         const anchorIdx = list.findIndex(
           item => item.kind === effectiveBeforeKind && item.id === effectiveBeforeId
@@ -927,14 +1111,21 @@ export function placeDesktopItemBefore(
       }
     }
 
+    const seenCells = new Set();
     list.forEach((item, idx) => {
       if (nextPlacements.length < MAX_DESKTOP_PLACEMENTS) {
-        nextPlacements.push({
-          kind: item.kind,
-          id: item.id,
-          pageId: page.id,
-          order: idx,
-        });
+        nextPlacements.push(
+          attachOptionalPlacementCell(
+            {
+              kind: item.kind,
+              id: item.id,
+              pageId: page.id,
+              order: idx,
+            },
+            item.cell,
+            seenCells
+          )
+        );
       }
     });
   }
@@ -942,18 +1133,305 @@ export function placeDesktopItemBefore(
   return buildDesktopResult(desktop, pages, nextPlacements, folders);
 }
 
+export function setDesktopItemCell(
+  desktop,
+  { fromPageId = null, toPageId = fromPageId, kind, id, cell } = {}
+) {
+  if (!desktop || typeof desktop !== 'object') return desktop;
+  const cleanId = String(id || '').trim();
+  if (!isFixedCellCapableKind(kind) || !isValidPlacementId(cleanId)) {
+    return desktop;
+  }
+
+  const isClearing = cell === null;
+  const normalizedCell = isClearing ? null : normalizePlacementCell(cell, kind);
+  if (!isClearing && !normalizedCell) {
+    return desktop;
+  }
+
+  const pages = normalizePages(desktop.pages);
+  const placements = Array.isArray(desktop.placements) ? desktop.placements : [];
+
+  let resolvedFromPageId = fromPageId ? String(fromPageId).trim() : '';
+  if (kind === 'widget' && !resolvedFromPageId) {
+    const existingWidgetPlacement = placements.find(
+      p => p && p.kind === 'widget' && p.id === cleanId
+    );
+    if (!existingWidgetPlacement) {
+      return desktop;
+    }
+    resolvedFromPageId = String(existingWidgetPlacement.pageId || '').trim();
+  }
+  if (!resolvedFromPageId || !pages.some(p => p.id === resolvedFromPageId)) {
+    return desktop;
+  }
+
+  const sourcePageList = getPagePlacements(desktop, resolvedFromPageId);
+  const sourceIdx = sourcePageList.findIndex(
+    item => item.kind === kind && item.id === cleanId
+  );
+  if (sourceIdx === -1) {
+    return desktop;
+  }
+
+  if (isClearing) {
+    const currentCell = normalizePlacementCell(sourcePageList[sourceIdx].cell, kind);
+    if (!currentCell) {
+      return desktop;
+    }
+    const nextSourceItems = sourcePageList.map((item, idx) => {
+      if (idx !== sourceIdx) return item;
+      const { cell: _prevCell, ...rest } = item;
+      return rest;
+    });
+    return rebuildPlacementsFromPageItems(desktop, resolvedFromPageId, nextSourceItems);
+  }
+
+  const resolvedToPageId = toPageId ? String(toPageId).trim() : resolvedFromPageId;
+  if (!resolvedToPageId || !pages.some(p => p.id === resolvedToPageId)) {
+    return desktop;
+  }
+
+  const workingDesktop =
+    resolvedFromPageId !== resolvedToPageId
+      ? movePlacementToPage(desktop, {
+          fromPageId: resolvedFromPageId,
+          toPageId: resolvedToPageId,
+          kind,
+          id: cleanId,
+        })
+      : desktop;
+
+  const targetPageList = getPagePlacements(workingDesktop, resolvedToPageId);
+  const targetIdx = targetPageList.findIndex(
+    item => item.kind === kind && item.id === cleanId
+  );
+  if (targetIdx === -1) {
+    return desktop;
+  }
+
+  const desiredKey = formatCellKey(normalizedCell);
+  const duplicateExists = targetPageList.some((item, idx) => {
+    if (idx === targetIdx) return false;
+    const otherCell = normalizePlacementCell(item.cell, item.kind);
+    return otherCell && formatCellKey(otherCell) === desiredKey;
+  });
+  if (duplicateExists) {
+    return desktop;
+  }
+
+  const currentCell = normalizePlacementCell(targetPageList[targetIdx].cell, kind);
+  if (
+    workingDesktop === desktop &&
+    currentCell &&
+    currentCell.row === normalizedCell.row &&
+    currentCell.column === normalizedCell.column
+  ) {
+    return desktop;
+  }
+
+  const nextTargetPageItems = targetPageList.map((item, idx) => {
+    if (idx !== targetIdx) return item;
+    const { cell: _prevCell, ...rest } = item;
+    return { ...rest, cell: normalizedCell };
+  });
+
+  return rebuildPlacementsFromPageItems(workingDesktop, resolvedToPageId, nextTargetPageItems);
+}
+
+export function applyDesktopCellDrop(
+  desktop,
+  { fromPageId = null, toPageId = fromPageId, kind, id, cell, moves = [] } = {}
+) {
+  if (!desktop || typeof desktop !== 'object') return desktop;
+  const cleanId = String(id || '').trim();
+  if (!isFixedCellCapableKind(kind) || !isValidPlacementId(cleanId)) {
+    return desktop;
+  }
+
+  const normalizedCell = normalizePlacementCell(cell, kind);
+  if (!normalizedCell) {
+    return desktop;
+  }
+  if (!Array.isArray(moves)) {
+    return desktop;
+  }
+
+  const pages = normalizePages(desktop.pages);
+  const placements = Array.isArray(desktop.placements) ? desktop.placements : [];
+
+  let resolvedFromPageId = fromPageId ? String(fromPageId).trim() : '';
+  if (kind === 'widget' && !resolvedFromPageId) {
+    const existingWidgetPlacement = placements.find(
+      (p) => p && p.kind === 'widget' && p.id === cleanId
+    );
+    if (!existingWidgetPlacement) {
+      return desktop;
+    }
+    resolvedFromPageId = String(existingWidgetPlacement.pageId || '').trim();
+  }
+  if (!resolvedFromPageId || !pages.some((p) => p.id === resolvedFromPageId)) {
+    return desktop;
+  }
+
+  const resolvedToPageId = toPageId ? String(toPageId).trim() : resolvedFromPageId;
+  if (!resolvedToPageId || !pages.some((p) => p.id === resolvedToPageId)) {
+    return desktop;
+  }
+
+  const sourcePageList = getPagePlacements(desktop, resolvedFromPageId);
+  const sourceExists = sourcePageList.some((item) => item.kind === kind && item.id === cleanId);
+  if (!sourceExists) {
+    return desktop;
+  }
+
+  const mainKey = `${kind}:${cleanId}`;
+  const seenChangeKeys = new Set([mainKey]);
+  const normalizedMoves = [];
+
+  for (const rawMove of moves) {
+    if (!rawMove || typeof rawMove !== 'object') {
+      return desktop;
+    }
+    const moveKind = rawMove.kind;
+    const moveId = String(rawMove.id || '').trim();
+    if (!isFixedCellCapableKind(moveKind) || !isValidPlacementId(moveId)) {
+      return desktop;
+    }
+    const moveCell = normalizePlacementCell(rawMove.cell, moveKind);
+    if (!moveCell) {
+      return desktop;
+    }
+    const moveKey = `${moveKind}:${moveId}`;
+    if (seenChangeKeys.has(moveKey)) {
+      return desktop;
+    }
+    seenChangeKeys.add(moveKey);
+    normalizedMoves.push({
+      key: moveKey,
+      kind: moveKind,
+      id: moveId,
+      cell: moveCell,
+    });
+  }
+
+  const workingDesktop =
+    resolvedFromPageId !== resolvedToPageId
+      ? movePlacementToPage(desktop, {
+          fromPageId: resolvedFromPageId,
+          toPageId: resolvedToPageId,
+          kind,
+          id: cleanId,
+        })
+      : desktop;
+
+  const targetPageList = getPagePlacements(workingDesktop, resolvedToPageId);
+  const targetIndexByKey = new Map();
+  targetPageList.forEach((item, idx) => {
+    targetIndexByKey.set(`${item.kind}:${item.id}`, idx);
+  });
+
+  if (!targetIndexByKey.has(mainKey)) {
+    return desktop;
+  }
+  for (const mv of normalizedMoves) {
+    if (!targetIndexByKey.has(mv.key)) {
+      return desktop;
+    }
+  }
+
+  const replacementCellsByKey = new Map([[mainKey, normalizedCell]]);
+  for (const mv of normalizedMoves) {
+    replacementCellsByKey.set(mv.key, mv.cell);
+  }
+
+  // Validate final uniqueness across all resulting cells simultaneously (enables swaps and cycles)
+  const finalSeenStarts = new Set();
+  let anyCellChanged = workingDesktop !== desktop;
+
+  const nextTargetPageItems = targetPageList.map((item) => {
+    const itemKey = `${item.kind}:${item.id}`;
+    if (replacementCellsByKey.has(itemKey)) {
+      const nextCell = replacementCellsByKey.get(itemKey);
+      const prevCell = normalizePlacementCell(item.cell, item.kind);
+      if (
+        !prevCell ||
+        prevCell.row !== nextCell.row ||
+        prevCell.column !== nextCell.column
+      ) {
+        anyCellChanged = true;
+      }
+      const { cell: _prevCell, ...rest } = item;
+      return { ...rest, cell: nextCell };
+    }
+    return item;
+  });
+
+  for (const item of nextTargetPageItems) {
+    const finalCell = normalizePlacementCell(item.cell, item.kind);
+    if (!finalCell) continue;
+    const cellKey = formatCellKey(finalCell);
+    if (finalSeenStarts.has(cellKey)) {
+      return desktop;
+    }
+    finalSeenStarts.add(cellKey);
+  }
+
+  if (!anyCellChanged) {
+    return desktop;
+  }
+
+  return rebuildPlacementsFromPageItems(workingDesktop, resolvedToPageId, nextTargetPageItems);
+}
+
+export const MAX_WIDGET_LAYOUT_ENTRIES = 24;
+
 export function enableWidgetOnPage(
   { layout, desktop },
   { widgetId, pageId = 'all', definitions = DEFAULT_WIDGET_DEFINITIONS }
 ) {
-  const normalizedLayout = normalizeWidgetLayout(layout, definitions);
-  const targetWidget = normalizedLayout.find(w => w.id === widgetId);
+  const defs = Array.isArray(definitions) && definitions.length > 0 ? definitions : DEFAULT_WIDGET_DEFINITIONS;
+  let normalizedLayout = normalizeWidgetLayout(layout, defs);
+  let targetWidget = normalizedLayout.find(w => w.id === widgetId);
+  let createdRow = false;
   if (!targetWidget) {
-    return reconcileDesktopWithLayout(desktop, normalizedLayout, { definitions });
+    // First add of an opt-in definition: create its initial row (id = type) with default size/config
+    const def = defs.find(d => d && d.type === widgetId);
+    if (
+      !def ||
+      !isValidPlacementId(widgetId) ||
+      normalizedLayout.length >= MAX_WIDGET_LAYOUT_ENTRIES
+    ) {
+      return {
+        ...reconcileDesktopWithLayout(desktop, normalizedLayout, { definitions: defs }),
+        added: false,
+        reason: !def ? 'unknown-type' : 'layout-full',
+      };
+    }
+    const initialSize = getDefaultSizeForWidgetType(def.type, defs);
+    targetWidget = {
+      id: def.type,
+      type: def.type,
+      enabled: false,
+      order: normalizedLayout.length,
+      ...(initialSize ? { size: initialSize } : {}),
+      config: structuredClone(def.defaultConfig || {}),
+    };
+    normalizedLayout = [...normalizedLayout, targetWidget];
+    createdRow = true;
   }
 
+  // Daily (on-demand, defaultEnabled:false) widgets get their registry default size on first placement
+  // so e.g. date-tile (single/square) never renders with an unsupported legacy compact fallback.
+  const targetDef = defs.find(d => d && d.type === targetWidget.type);
+  const firstPlacementSize =
+    !createdRow && targetDef && targetDef.defaultEnabled === false && targetWidget.size === undefined
+      ? getDefaultSizeForWidgetType(targetWidget.type, defs)
+      : null;
   const nextLayout = normalizedLayout.map(w =>
-    w.id === widgetId ? { ...w, enabled: true } : w
+    w.id === widgetId
+      ? { ...w, enabled: true, ...(firstPlacementSize ? { size: firstPlacementSize } : {}) }
+      : w
   );
 
   const pages = normalizePages(desktop?.pages);
@@ -978,7 +1456,7 @@ export function enableWidgetOnPage(
       ...(Array.isArray(desktop?.folders) ? { folders: structuredClone(desktop.folders) } : {}),
     },
     nextLayout,
-    { fallbackPages: pages, definitions }
+    { fallbackPages: pages, definitions: defs }
   );
 }
 
@@ -1047,13 +1525,20 @@ export function removeSitePlacements(desktop, siteId) {
     const list = getPagePlacements(desktop, page.id).filter(
       item => !(item.kind === 'site' && item.id === siteId)
     );
+    const seenCells = new Set();
     list.forEach((item, idx) => {
-      nextPlacements.push({
-        kind: item.kind,
-        id: item.id,
-        pageId: page.id,
-        order: idx,
-      });
+      nextPlacements.push(
+        attachOptionalPlacementCell(
+          {
+            kind: item.kind,
+            id: item.id,
+            pageId: page.id,
+            order: idx,
+          },
+          item.cell,
+          seenCells
+        )
+      );
     });
   }
 
@@ -1132,6 +1617,7 @@ export function deleteDesktopPage(desktop, pageId, fallbackPageId = 'all') {
         const key = `${orphan.kind}:${orphan.id}`;
         if (!existingKeys.has(key)) {
           existingKeys.add(key);
+          // Orphans change page from deleted pageId to targetFallbackId: clear old pin
           list.push({
             kind: orphan.kind,
             id: orphan.id,
@@ -1141,14 +1627,21 @@ export function deleteDesktopPage(desktop, pageId, fallbackPageId = 'all') {
         }
       }
     }
+    const seenCells = new Set();
     list.forEach((item, idx) => {
       if (nextPlacements.length < MAX_DESKTOP_PLACEMENTS) {
-        nextPlacements.push({
-          kind: item.kind,
-          id: item.id,
-          pageId: page.id,
-          order: idx,
-        });
+        nextPlacements.push(
+          attachOptionalPlacementCell(
+            {
+              kind: item.kind,
+              id: item.id,
+              pageId: page.id,
+              order: idx,
+            },
+            item.cell,
+            seenCells
+          )
+        );
       }
     });
   }

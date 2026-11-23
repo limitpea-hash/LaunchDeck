@@ -1,9 +1,18 @@
 import { HttpError } from '../../validation.js';
-import { check, string } from '../../features/schema.js';
 import { clockSnapshot } from '../../features/settings.js';
-import { providerLocation, normalizeCities, weatherRequest, normalizeWeather } from '../../features/provider-data.js';
+import { UAPI_HOST, GEOCODING_HOST, ipLocationRequest, normalizeIpLocation, normalizeCityQuery, searchCityLocations, weatherRequest, normalizeWeather } from '../../features/provider-data.js';
 
-export const NETWORK_ORIGINS = ['https://api.open-meteo.com/*', 'https://geocoding-api.open-meteo.com/*', 'https://ipapi.co/*'];
+const WEATHER_ORIGIN = 'https://api.open-meteo.com/*';
+const CITY_ORIGIN = `https://${GEOCODING_HOST}/*`;
+const UAPI_ORIGIN = `https://${UAPI_HOST}/*`;
+export const NETWORK_ORIGINS = [WEATHER_ORIGIN, CITY_ORIGIN, UAPI_ORIGIN];
+
+export function createLocationPermissions(permissions) {
+  return Object.freeze({
+    requestCitySearch: () => permissions.request({ origins: [UAPI_ORIGIN, CITY_ORIGIN, WEATHER_ORIGIN] }),
+    requestWeather: () => permissions.request({ origins: [WEATHER_ORIGIN] }),
+  });
+}
 
 export function createBrowserEnvironment({ permissions, fetchImpl = globalThis.fetch, now = Date.now }) {
   const cache = new Map();
@@ -42,14 +51,13 @@ export function createBrowserEnvironment({ permissions, fetchImpl = globalThis.f
     finally { active -= 1; }
   }
 
-  async function cached(url, ttl, normalize, allowStale = false) {
-    const key = url.href;
+  async function cached(key, ttl, load, allowStale = false) {
     const previous = cache.get(key);
     if (previous?.until > now()) return { ...structuredClone(previous.value), cache: { hit: true, stale: Boolean(previous.stale) } };
     if (pending.has(key)) return pending.get(key);
     const promise = (async () => {
       try {
-        const value = normalize(await fetchJson(url));
+        const value = await load();
         cache.delete(key);
         cache.set(key, { value, until: now() + ttl, fetchedAt: now(), stale: false });
         return { ...value, cache: { hit: false, stale: false } };
@@ -70,11 +78,8 @@ export function createBrowserEnvironment({ permissions, fetchImpl = globalThis.f
   }
 
   async function search(term) {
-    string(term, 100, '城市关键词');
-    check(term.trim().length >= 2, '城市关键词至少需要两个字符');
-    const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
-    url.search = new URLSearchParams({ name: term.trim(), count: '8', language: 'zh', format: 'json' });
-    return cached(url, 3600000, normalizeCities);
+    const query = normalizeCityQuery(term);
+    return cached(`search:${query}`, 3600000, () => searchCityLocations(query, fetchJson));
   }
 
   async function resolve(settings, input) {
@@ -86,11 +91,9 @@ export function createBrowserEnvironment({ permissions, fetchImpl = globalThis.f
     } else if (settings.location.mode === 'browser') warnings.push({ code: 'LOCATION_REQUIRED', message: '请授权定位或手动选择城市' });
     else {
       try {
-        const value = await cached(new URL('https://ipapi.co/json/'), 3600000, raw => {
-          check(raw && !raw.error, 'IP 服务响应不正确');
-          return { location: providerLocation({ name: raw.city || raw.region || raw.country_name, latitude: raw.latitude,
-            longitude: raw.longitude, timeZone: raw.timezone, source: 'ip', approximate: true }) };
-        });
+        const value = await cached(`ip:${input.browserTimeZone || ''}`, 3600000, async () => ({
+          location: normalizeIpLocation(await fetchJson(ipLocationRequest()), 'ip', input.browserTimeZone),
+        }));
         location = value.location;
       } catch (error) { warnings.push({ code: error.status === 403 ? 'NETWORK_PERMISSION_REQUIRED' : 'LOCATION_UNAVAILABLE', message: error.message }); }
     }
@@ -99,7 +102,7 @@ export function createBrowserEnvironment({ permissions, fetchImpl = globalThis.f
 
   async function weather(input) {
     const { url, point } = weatherRequest(input);
-    return cached(url, 600000, raw => normalizeWeather(raw, point, now()), true);
+    return cached(url.href, 600000, async () => normalizeWeather(await fetchJson(url), point, now()), true);
   }
 
   return { search, resolve, weather };

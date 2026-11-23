@@ -20,6 +20,17 @@ test('folder creation replaces target slot, retains mirrors and input immutabili
  assert.deepEqual(input,original);
 });
 
+test('folder changes preserve fixed coordinates on unrelated cards',()=>{
+ const input=initial(),cell={row:2,column:4};
+ input.desktop=model.setDesktopItemCell(input.desktop,{fromPageId:'all',toPageId:'all',kind:'site',id:'third',cell});
+ const grouped=valid(create(input));
+ const renamed=valid(folder.renameSiteFolder(grouped,{folderId:'folder_tools',title:'收藏'}));
+ const dissolved=valid(folder.dissolveSiteFolder(renamed,{folderId:'folder_tools'}));
+ for(const desktop of [grouped,renamed,dissolved]) {
+   assert.deepEqual(model.getPagePlacements(desktop,'all').find(item=>item.id==='third').cell,cell);
+ }
+});
+
 test('folder add, rename, internal sorting, extraction and automatic dissolution are server-valid',()=>{
  let d=valid(create());
  d=valid(folder.addSiteToFolder(d,{folderId:'folder_tools',siteId:'third',fromPageId:'all'}));
@@ -92,7 +103,8 @@ test('cross-page folders merge mirrored members without losing the other folder 
 
 test('application merge callbacks create and extend a folder with one atomic save per release',()=>{
  const source=readFileSync(new URL('../frontend/app.js',import.meta.url),'utf8');
- const functions=['commitDesktopAndLayout','ensureDesktopPointerDragController'].map(name=>{
+ const functions=['commitDesktopAndLayout','getDesktopCellDropSpan','computeDesktopCellDropPlan',
+   'commitDesktopCellDropFromDrag','ensureDesktopPointerDragController'].map(name=>{
    const start=source.indexOf(`function ${name}(`);assert.ok(start>=0);
    const end=source.indexOf('\nfunction ',start+1);return source.slice(start,end<0?undefined:end);
  }).join('\n');
@@ -103,6 +115,7 @@ test('application merge callbacks create and extend a folder with one atomic sav
    createDesktopPointerDragController(options){callbacks=options;return{};},
    getEffectiveDesktopForRender:()=>state.widgetState.desktop,
    closeFolderDetailModal(){},savePagesToStorage(){},renderAll(){},renderAddWidgetModalList(){},
+   widgetHost:{updateAll(){}},
    featureClient:{saveWidgetsState:patch=>saves.push(structuredClone(patch))},
  };
  runInNewContext(functions,context);context.ensureDesktopPointerDragController();

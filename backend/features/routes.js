@@ -3,6 +3,7 @@ import { createFeatureStore, deviceKey } from './store.js';
 import { widgetDefinitions, defaultWidgetState, validateWidgetPatch, validateWidgetDocument } from './widgets.js';
 import { defaultDeviceSettings, validateSettingsPatch, validateEnvironmentInput, clockSnapshot } from './settings.js';
 import { check, timeZone } from './schema.js';
+import manifest from '../extension/manifest.json' with { type: 'json' };
 
 function validateQuery(url, allowed) {
   const seen = new Set();
@@ -18,16 +19,17 @@ function numberParam(url, name) {
   return Number(value);
 }
 
-export function createFeatureRoutes({ db, readBody, json, environment }) {
+export function createFeatureRoutes({ db, readBody, json, environment, exchangeRates }) {
   const store = createFeatureStore(db);
   const requests = new Map();
   const methods = new Map([
     ['/api/widgets', ['GET']], ['/api/widgets/state', ['GET', 'PATCH']],
     ['/api/device/settings', ['GET', 'PATCH']], ['/api/time', ['GET']], ['/api/timezones', ['GET']],
     ['/api/location/search', ['GET']], ['/api/environment/resolve', ['POST']], ['/api/weather', ['GET']],
+    ['/api/update/version', ['GET']], ['/api/exchange-rate', ['GET']],
   ]);
 
-  function rateLimit(req, res) {
+  function rateLimit(req, res, path) {
     const key = req.socket.remoteAddress || 'unknown';
     const now = Date.now();
     let entry = requests.get(key);
@@ -36,7 +38,7 @@ export function createFeatureRoutes({ db, readBody, json, environment }) {
       requests.delete(key);
       requests.set(key, entry);
     }
-    const external = ['/api/location/search', '/api/environment/resolve', '/api/weather'].includes(new URL(req.url, 'http://localhost').pathname);
+    const external = ['/api/location/search', '/api/environment/resolve', '/api/weather', '/api/exchange-rate'].includes(path);
     if (++entry.count > 120 || (external && ++entry.external > 30)) {
       res.setHeader('Retry-After', String(Math.max(1, Math.ceil((entry.until - now) / 1000))));
       throw new HttpError(429, '请求过于频繁，请稍后重试');
@@ -60,10 +62,16 @@ export function createFeatureRoutes({ db, readBody, json, environment }) {
       res.setHeader('Allow', allowed.join(', '));
       throw new HttpError(405, '请求方法不支持');
     }
-    rateLimit(req, res);
+    rateLimit(req, res, path);
     if (path === '/api/widgets') {
       validateQuery(url, []);
       json(res, 200, { schemaVersion: 1, widgets: widgetDefinitions });
+    } else if (path === '/api/update/version') {
+      validateQuery(url, []);
+      json(res, 200, { version: manifest.version });
+    } else if (path === '/api/exchange-rate') {
+      validateQuery(url, ['base', 'quote']);
+      json(res, 200, await exchangeRates.rate({ base: url.searchParams.get('base'), quote: url.searchParams.get('quote') }));
     } else if (path === '/api/widgets/state') {
       validateQuery(url, []);
       const value = req.method === 'GET' ? store.read('widgets', defaultWidgetState)

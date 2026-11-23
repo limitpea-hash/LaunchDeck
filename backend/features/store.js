@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { HttpError } from '../validation.js';
+import { migrateWidgetSizes } from './widgets.js';
 
 export function createFeatureStore(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS feature_documents (
@@ -15,8 +16,9 @@ export function createFeatureStore(db) {
 
   function read(key, defaults) {
     const row = select.get(key);
-    return row ? { revision: row.revision, state: JSON.parse(row.payload), updatedAt: row.updated_at }
-      : { revision: 0, state: defaults(), updatedAt: null };
+    if (!row) return { revision: 0, state: defaults(), updatedAt: null };
+    const state = JSON.parse(row.payload);
+    return { revision: row.revision, state: key === 'widgets' ? migrateWidgetSizes(state) : state, updatedAt: row.updated_at };
   }
   return {
     read,
@@ -28,7 +30,8 @@ export function createFeatureStore(db) {
         const previous = read(key, defaults);
         if (ifMatch !== `"${previous.revision}"`) throw new HttpError(409, '数据已在其他页面更新，请重新读取后处理冲突');
         if (key.startsWith('device:') && previous.revision === 0 && countDevices.get().count >= 500) throw new HttpError(503, '设备设置存储已达上限');
-        const state = { ...previous.state, ...patch };
+        const merged = { ...previous.state, ...patch };
+        const state = key === 'widgets' ? migrateWidgetSizes(merged) : merged;
         validateState(state, previous.state);
         save.run(key, previous.revision + 1, JSON.stringify(state), new Date().toISOString());
         const result = read(key, defaults);

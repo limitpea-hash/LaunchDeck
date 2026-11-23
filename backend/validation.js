@@ -35,7 +35,8 @@ function validateSites(sites) {
     check(typeof site.accent === 'string' && /^#[\da-f]{6}$/i.test(site.accent), '图标主题色格式不正确');
     if (site.iconKey !== undefined) check(typeof site.iconKey === 'string' && /^[a-z0-9_]{1,64}$/i.test(site.iconKey), '图标名称不正确');
     if (site.keywords !== undefined) text(site.keywords, 2000, '关键词', false);
-    check(Object.keys(site).every(key => ['id', 'title', 'url', 'category', 'pinned', 'gradient', 'accent', 'iconKey', 'keywords'].includes(key)), '网站包含未知字段');
+    if (Object.hasOwn(site, 'size')) check(['single', 'square'].includes(site.size), '网站方块尺寸不正确');
+    check(Object.keys(site).every(key => ['id', 'title', 'url', 'category', 'pinned', 'gradient', 'accent', 'iconKey', 'keywords', 'size'].includes(key)), '网站包含未知字段');
   }
 }
 

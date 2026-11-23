@@ -5,6 +5,15 @@ import * as quickNoteWidget from './quick-note.js';
 import * as todoWidget from './todo.js';
 import * as calendarWidget from './calendar.js';
 import * as worldClockWidget from './world-clock.js';
+import {
+  mountWeatherBadge,
+  mountDateTile,
+  mountCountdown,
+  mountFocusLauncher,
+} from './daily-small.js';
+import { mountHabits, mountTodayDashboard, mountWeatherStrip } from './daily-widgets.js';
+import * as currencyConverterWidget from './currency-converter.js';
+import * as importedCardWidget from './imported-card.js';
 
 // Fixed, reviewed local module map. Never construct dynamic imports from user input.
 export const WIDGET_MODULE_MAP = new Map([
@@ -14,6 +23,15 @@ export const WIDGET_MODULE_MAP = new Map([
   ['todo', todoWidget],
   ['calendar', calendarWidget],
   ['world-clock', worldClockWidget],
+  ['weather-badge', { mount: mountWeatherBadge }],
+  ['date-tile', { mount: mountDateTile }],
+  ['countdown', { mount: mountCountdown }],
+  ['focus-launcher', { mount: mountFocusLauncher }],
+  ['habits', { mount: mountHabits }],
+  ['today-dashboard', { mount: mountTodayDashboard }],
+  ['weather-strip', { mount: mountWeatherStrip }],
+  ['currency-converter', currencyConverterWidget],
+  ['imported-card', importedCardWidget],
 ]);
 
 export function createWidgetHost(contextFactory) {

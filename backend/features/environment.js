@@ -1,10 +1,9 @@
 import { isIP } from 'node:net';
 import { HttpError } from '../validation.js';
-import { check, string } from './schema.js';
 import { clockSnapshot, validateEnvironmentInput } from './settings.js';
-import { providerLocation, normalizeCities, weatherRequest, normalizeWeather } from './provider-data.js';
+import { UAPI_HOST, GEOCODING_HOST, ipLocationRequest, normalizeIpLocation, normalizeCityQuery, searchCityLocations, weatherRequest, normalizeWeather } from './provider-data.js';
 
-const UPSTREAM_HOSTS = new Set(['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipapi.co']);
+const UPSTREAM_HOSTS = new Set(['api.open-meteo.com', GEOCODING_HOST, UAPI_HOST]);
 const MAX_RESPONSE_BYTES = 256 * 1024;
 
 function publicPeer(address = '') {
@@ -39,7 +38,7 @@ export function createEnvironmentService({ fetchImpl = globalThis.fetch, now = D
     try {
       const response = await fetchImpl(url, {
         signal: AbortSignal.timeout(5000), redirect: 'error', credentials: 'omit',
-        headers: { Accept: 'application/json', 'User-Agent': 'AGY-Navigation/1.0' },
+        headers: { Accept: 'application/json', 'User-Agent': 'LaunchDeck/1.0' },
       });
       if (!response.ok || !response.headers.get('content-type')?.toLowerCase().startsWith('application/json')) throw new Error('upstream response rejected');
       if (Number(response.headers.get('content-length')) > MAX_RESPONSE_BYTES) { await response.body?.cancel(); throw new Error('upstream response too large'); }
@@ -92,27 +91,16 @@ export function createEnvironmentService({ fetchImpl = globalThis.fetch, now = D
   }
 
   async function searchLocations(query) {
-    string(query, 100, '城市关键词');
-    check(query.trim().length >= 2, '城市关键词至少需要两个字符');
-    const term = query.trim();
-    return cached(`search:${term}`, 3600000, async () => {
-      const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
-      url.search = new URLSearchParams({ name: term, count: '8', language: 'zh', format: 'json' });
-      const raw = await fetchJson(url);
-      return normalizeCities(raw);
-    });
+    const term = normalizeCityQuery(query);
+    return cached(`search:${term}`, 3600000, () => searchCityLocations(term, fetchJson));
   }
 
-  async function locateIp(remoteAddress) {
+  async function locateIp(remoteAddress, browserTimeZone) {
     const peer = publicPeer(remoteAddress);
-    return cached(`ip:${peer || 'network-egress'}`, 3600000, async () => {
-      const url = new URL(peer ? `https://ipapi.co/${encodeURIComponent(peer)}/json/` : 'https://ipapi.co/json/');
-      const raw = await fetchJson(url);
-      check(!raw.error, 'IP 定位服务响应不正确');
-      const location = providerLocation({ name: raw.city || raw.region || raw.country_name,
-        latitude: raw.latitude, longitude: raw.longitude, timeZone: raw.timezone,
-        source: peer ? 'ip' : 'network-ip', approximate: true });
-      return { location, provider: 'ipapi.co', fetchedAt: new Date(now()).toISOString() };
+    return cached(`ip:${peer || 'network-egress'}:${browserTimeZone || ''}`, 3600000, async () => {
+      const raw = await fetchJson(ipLocationRequest(peer || ''));
+      const location = normalizeIpLocation(raw, peer ? 'ip' : 'network-ip', browserTimeZone);
+      return { location };
     });
   }
 
@@ -126,7 +114,7 @@ export function createEnvironmentService({ fetchImpl = globalThis.fetch, now = D
         source: 'browser', approximate: false, timeZoneSource: input.browserTimeZone ? 'browser' : 'utc-fallback' };
     } else if (settings.location.mode === 'browser') warnings.push({ code: 'LOCATION_REQUIRED', message: '请授权浏览器定位，或改用手动城市/IP 定位' });
     else {
-      try { location = (await locateIp(remoteAddress)).location; }
+      try { location = (await locateIp(remoteAddress, input.browserTimeZone)).location; }
       catch { warnings.push({ code: 'LOCATION_UNAVAILABLE', message: '暂时无法获取近似位置，请手动选择城市' }); }
     }
     return { location, clock: clockSnapshot(settings.clock, { browserTimeZone: input.browserTimeZone, locationTimeZone: location?.timeZone, now: now() }), warnings };

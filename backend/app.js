@@ -6,17 +6,25 @@ import { DatabaseSync } from 'node:sqlite';
 import { HttpError, validatePatch } from './validation.js';
 import { getAllowedHosts } from './network.js';
 import { createEnvironmentService } from './features/environment.js';
+import { createExchangeRateService } from './features/exchange-rates.js';
 import { createFeatureRoutes } from './features/routes.js';
 import { createNavigationRoutes } from './navigation/http.js';
 import { fileURLToPath } from 'node:url';
 
 const platformFiles = new Set(['validation.js', 'features/schema.js', 'features/widgets.js',
+  'features/notifications.js', 'features/currencies.js', 'features/widget-package.js', 'features/upgrade-package.js',
+  'features/china-holidays.js',
   'navigation/schema.js', 'navigation/codec.js', 'navigation/merge.js']);
+
+function documentPolicy(connectSources) {
+  return `default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src ${connectSources}; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`;
+}
 
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
+  ['/site-tiles.css', ['site-tiles.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/backend-client.js', ['backend-client.js', 'text/javascript; charset=utf-8']],
   ['/restore.html', ['restore.html', 'text/html; charset=utf-8']],
@@ -24,7 +32,10 @@ const assets = new Map([
   ['/restore.css', ['restore.css', 'text/css; charset=utf-8']],
 ]);
 
-export function createApp({ root, databasePath, allowedHosts = getAllowedHosts, environmentService = createEnvironmentService() }) {
+export function createApp({
+  root, databasePath, allowedHosts = getAllowedHosts, environmentService = createEnvironmentService(),
+  exchangeRateService = createExchangeRateService(),
+}) {
   if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(databasePath);
   db.exec(`PRAGMA journal_mode = WAL;
@@ -65,14 +76,14 @@ export function createApp({ root, databasePath, allowedHosts = getAllowedHosts, 
     catch { throw new HttpError(400, 'JSON 格式不正确'); }
   }
 
-  const handleFeature = createFeatureRoutes({ db, readBody, json, environment: environmentService });
+  const handleFeature = createFeatureRoutes({ db, readBody, json, environment: environmentService, exchangeRates: exchangeRateService });
   const handleNavigation = createNavigationRoutes({ db, readBody, json });
 
   const server = createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', documentPolicy("'self'"));
     res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(), microphone=()');
     res.setHeader('X-Frame-Options', 'DENY');
     try {
@@ -137,6 +148,7 @@ export function createApp({ root, databasePath, allowedHosts = getAllowedHosts, 
       const assetPath = await realpath(resolve(frontendRoot, asset[0]));
       if (!assetPath.startsWith(`${frontendRoot}${sep}`)) throw new HttpError(404, '页面不存在');
       const content = await readFile(assetPath);
+      if (asset[0] === 'index.html') res.setHeader('Content-Security-Policy', documentPolicy("'self' https:"));
       res.writeHead(200, { 'Content-Type': asset[1], 'Content-Length': content.length });
       res.end(req.method === 'HEAD' ? undefined : content);
     } catch (error) {

@@ -1,6 +1,6 @@
 import { validatePatch } from '../validation.js';
 import { record, check, identifier } from '../features/schema.js';
-import { validateDesktop, validateWidgetSize, widgetDefinitions } from '../features/widgets.js';
+import { migrateWidgetSizes, validateDesktop, validateWidgetSize, widgetDefinitions } from '../features/widgets.js';
 
 export const MAX_NAVIGATION_BYTES = 1024 * 1024;
 export const SYSTEM_SITE_PAGES = ['ai', 'design', 'dev', 'media'];
@@ -23,7 +23,7 @@ export function mergeNavigationSites(systemSites, customSites, siteOrder) {
   for (const site of systemSites) result.push(...(before.get(site.id) || []), site);
   return [...result, ...pending, ...remaining.values()];
 }
-const siteKeys = ['id', 'title', 'url', 'category', 'pinned', 'gradient', 'accent', 'iconKey', 'keywords'];
+const siteKeys = ['id', 'title', 'url', 'category', 'pinned', 'gradient', 'accent', 'iconKey', 'keywords', 'size'];
 const pageKeys = ['id', 'title', 'icon', 'isSystem', 'order'];
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => Object.hasOwn(value, key)).map(key => [key, structuredClone(value[key])]));
 
@@ -75,9 +75,9 @@ export function createNavigationBackup({ sites, pages, desktop, layout }) {
     backupId, exportedAt: new Date().toISOString(),
     sites: sites.map(site => pick(site, siteKeys)), pages: cleanPages,
     desktop: { schemaVersion: 2, pages: structuredClone(cleanPages),
-      placements: (desktop.placements || []).map(p => pick(p, ['kind', 'id', 'pageId', 'order'])),
+      placements: (desktop.placements || []).map(p => pick(p, ['kind', 'id', 'pageId', 'order', 'cell'])),
       folders: (desktop.folders || []).map(f => pick(f, ['id', 'title', 'siteIds'])) },
-    widgetSlots: layout.map(slot => pick(slot, ['id', 'type', 'size'])),
+    widgetSlots: migrateWidgetSizes({ layout }).layout.map(slot => pick(slot, ['id', 'type', 'size'])),
   };
   return validateNavigationBackup(value);
 }

@@ -42,6 +42,9 @@ test('serves the page, exposes health, and keeps internal files private', async 
     assert.equal((await app.get(path)).status, 404);
   }
   assert.equal((await app.get('/app.js', { method: 'HEAD' })).status, 200);
+  const tileStyle = await app.get('/site-tiles.css', { method: 'HEAD' });
+  assert.equal(tileStyle.status, 200);
+  assert.match(tileStyle.headers.get('content-type'), /^text\/css/);
   assert.equal((await app.get('/api/state', { method: 'DELETE' })).status, 405);
 });
 
@@ -76,6 +79,18 @@ test('stale and simultaneous edits do not overwrite a newer version', async t =>
   assert.ok(['标签页 A', '标签页 B'].includes(saved.state.note));
 });
 
+test('site tile dimensions persist as optional 1×1 and 2×2 settings', async t => {
+  const app = await start();
+  t.after(app.close);
+  assert.equal((await app.patch(initial)).status, 200);
+  const largeSite = { ...site, size: 'square' };
+  assert.equal((await app.patch({ sites: [largeSite] }, 1)).status, 200);
+  assert.deepEqual((await (await app.get()).json()).state.sites, [largeSite]);
+  const smallSite = { ...site, size: 'single' };
+  assert.equal((await app.patch({ sites: [smallSite] }, 2)).status, 200);
+  assert.deepEqual((await (await app.get()).json()).state.sites, [smallSite]);
+});
+
 test('validates input and rejects cross-origin writes without changing the database', async t => {
   const app = await start();
   t.after(app.close);
@@ -85,6 +100,8 @@ test('validates input and rejects cross-origin writes without changing the datab
     { sites: [{ ...site, url: 'javascript:alert(1)' }] },
     { sites: [site, site] },
     { sites: [{ ...site, gradient: 'url(https://example.com)' }] },
+    { sites: [{ ...site, size: 'large' }] },
+    { sites: [{ ...site, size: ['square'] }] },
     { prefs: { ...prefs, tintHue: 361 } },
     { prefs: { ...prefs, focusActive: 'true' } },
     { note: 'x'.repeat(100001) },

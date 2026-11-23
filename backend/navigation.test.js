@@ -23,7 +23,8 @@ const site = (id, category = 'dev') => ({ id, category, title: `示例 ${id}`, u
 const pages = ['all', 'ai', 'design', 'dev', 'media', 'page_demo'].map((id, order) => ({ id, title: id, icon: 'sparkles', isSystem: order < 5, order }));
 function fixture() {
   const widgets = defaultWidgetState();
-  widgets.layout = widgets.layout.map(w => ({ ...w, enabled: w.id === 'calendar' }));
+  // Fixtures represent a backup made before widget sizes were stored.
+  widgets.layout = widgets.layout.map(({ size, ...widget }) => ({ ...widget, enabled: widget.id === 'calendar' }));
   widgets.todos = [{ id: 't1', text: '本机待办应保留', completed: false }];
   widgets.layout.find(w => w.id === 'calendar').config.weekStartsOn = 0;
   widgets.desktop = { schemaVersion: 2, pages, placements: [
@@ -49,6 +50,8 @@ test('plain HTTP navigation JSON export works without secure-context randomUUID'
 
 test('navigation export is a strict content-free whitelist; merge preserves local notes, todos and widget config', () => {
   const f = fixture();
+  f.widgets.desktop.placements[0].cell = { row: 0, column: 3 };
+  f.widgets.desktop.placements[1].cell = { row: 2, column: 0 };
   const backup = createNavigationBackup({ sites: f.sites, pages, desktop: f.widgets.desktop, layout: f.widgets.layout, note: 'secret' });
   assert.deepEqual(Object.keys(backup).sort(), ['backupId', 'desktop', 'exportedAt', 'format', 'pages', 'sites', 'version', 'widgetSlots'].sort());
   assert.ok(backup.widgetSlots.every(slot => Object.keys(slot).sort().join() === 'id,type'));
@@ -60,24 +63,35 @@ test('navigation export is a strict content-free whitelist; merge preserves loca
   assert.deepEqual(merged.portal.sites.map(s => s.id), ['s1', 's2']);
   assert.deepEqual(merged.browserData.customSites.map(s => s.id), ['custom1']);
   assert.deepEqual(merged.widgets.desktop, backup.desktop);
+  assert.deepEqual(merged.widgets.desktop.placements.map(entry => entry.cell), [
+    { row: 0, column: 3 }, { row: 2, column: 0 }, undefined,
+  ]);
   assert.deepEqual(f.portal.sites.map(s => s.id), ['local']);
 });
 
-test('widget dimensions survive compressed navigation and full extension backups, with old backups defaulting to compact', async () => {
+test('active dimensions survive backups and removed dimensions migrate while keeping calendar data', async () => {
   const { sites, widgets, portal, backup: legacyBackup } = fixture();
+  sites[0].size = 'square';
+  sites[2].size = 'square';
   const calendar = layout => layout.find(item => item.type === 'calendar');
-  calendar(widgets.layout).size = 'wide';
+  calendar(widgets.layout).size = 'full';
+  calendar(widgets.layout).config.marks = [{ date: '2026-10-01', title: '出行', color: 'green' }];
   portal.prefs = { ...portal.prefs, nightMode: true };
   const backup = createNavigationBackup({ sites, pages, desktop: widgets.desktop, layout: widgets.layout });
-  assert.deepEqual(calendar(backup.widgetSlots), { id: 'calendar', type: 'calendar', size: 'wide' });
+  assert.deepEqual(calendar(backup.widgetSlots), { id: 'calendar', type: 'calendar', size: 'full' });
+  assert.ok(!JSON.stringify(backup).includes('出行'));
   const decoded = await decodeNavigationPacket(await encodeNavigationBackup(backup));
+  assert.deepEqual(decoded.sites.map(site => site.size), ['square', undefined, 'square']);
+  const restoredNavigation = mergeNavigationBackup(decoded, portal, widgets);
+  assert.equal(restoredNavigation.portal.sites[0].size, 'square');
+  assert.equal(restoredNavigation.browserData.customSites[0].size, 'square');
   const docs = createLocalDocuments(storageFixture());
   await docs.patch('portal', portal, '"0"');
   await docs.patch('widgets', widgets, '"0"');
   await docs.importNavigation({ backup: decoded, portalRevision: 1, widgetRevision: 1 });
   const full = await docs.exportData();
   assert.equal(full.portal.prefs.nightMode, true);
-  assert.equal(calendar(full.widgets.layout).size, 'wide');
+  assert.equal(calendar(full.widgets.layout).size, 'full');
   assert.deepEqual(calendar(full.widgets.layout).config, calendar(widgets.layout).config);
   assert.deepEqual(full.widgets.todos, widgets.todos);
   for (const size of ['medium', 'resize(1)', '__proto__', 4, null]) {
@@ -91,8 +105,16 @@ test('widget dimensions survive compressed navigation and full extension backups
   await docs.importNavigation({ backup: legacyBackup, portalRevision: 2, widgetRevision: 2 });
   assert.equal(calendar((await docs.read('widgets')).state.layout).size, undefined);
   assert.equal((await docs.read('portal')).state.prefs.nightMode, true);
+  const oldDimensions = structuredClone(backup);
+  calendar(oldDimensions.widgetSlots).size = 'large';
+  await docs.importNavigation({ backup: oldDimensions, portalRevision: 3, widgetRevision: 3 });
+  assert.equal(calendar((await docs.read('widgets')).state.layout).size, 'full');
+  const oldFull = structuredClone(full);
+  calendar(oldFull.widgets.layout).size = 'wide';
+  await docs.importData(oldFull);
+  assert.deepEqual(calendar((await docs.read('widgets')).state.layout), { ...calendar(full.widgets.layout), size: 'square' });
   await docs.importData(full);
-  assert.equal(calendar((await docs.read('widgets')).state.layout).size, 'wide');
+  assert.equal(calendar((await docs.read('widgets')).state.layout).size, 'full');
 });
 
 test('mixed custom/system Dock order survives restore and reload, with later remote system reorders respected', () => {
@@ -108,6 +130,22 @@ test('mixed custom/system Dock order survives restore and reload, with later rem
   assert.deepEqual(remoteChanged.filter(s=>s.category!=='page_demo').map(s=>s.id),['s2','s1']);
 });
 
+test('navigation backup carries daily widget placement and size without private widget data', async () => {
+  const { sites, widgets, portal } = fixture();
+  widgets.layout.push({
+    id: 'habits', type: 'habits', size: 'tall', order: 6, enabled: true,
+    config: { habits: [{ id: 'reading', title: '阅读', checkedDates: ['2026-11-23'] }] },
+  });
+  widgets.desktop.placements.push({ kind: 'widget', id: 'habits', pageId: 'all', order: 2 });
+  const backup = createNavigationBackup({ sites, pages, desktop: widgets.desktop, layout: widgets.layout });
+  assert.deepEqual(backup.widgetSlots.find(item => item.id === 'habits'), { id: 'habits', type: 'habits', size: 'tall' });
+  const restored = mergeNavigationBackup(await decodeNavigationPacket(await encodeNavigationBackup(backup)), portal, defaultWidgetState());
+  assert.deepEqual(restored.widgets.layout.find(item => item.id === 'habits'), {
+    id: 'habits', type: 'habits', size: 'tall', order: 6, enabled: true, config: { habits: [] },
+  });
+  assert.deepEqual(restored.widgets.desktop.placements, widgets.desktop.placements);
+});
+
 test('navigation rejects executable URLs, unknown/private fields, dangling references and malformed layout', () => {
   for (const mutate of [
     b => { b.note = 'not navigation'; },
@@ -117,6 +155,7 @@ test('navigation rejects executable URLs, unknown/private fields, dangling refer
     b => { b.widgetSlots[0].type = '../../malicious'; },
     b => { b.desktop.placements = {}; },
     b => { b.desktop.placements[0].id = 'missing'; },
+    b => { b.desktop.placements.find(entry => entry.kind === 'folder').cell = { row: 0, column: 0 }; },
     b => { b.desktop.folders[0].siteIds[0] = 'missing'; },
     b => { b.desktop.placements.push({ ...b.desktop.placements[1], pageId: 'dev' }); },
     b => { b.sites.push({ ...b.sites[0] }); },

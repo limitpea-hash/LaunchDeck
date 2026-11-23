@@ -5,13 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createExtensionApi, RPC_CHANNEL, LEGACY_RPC_CHANNEL } from './extension/runtime/api.js';
 import { STORE_KEY, LEGACY_STORE_KEY } from './extension/runtime/documents.js';
-import { createBrowserEnvironment } from './extension/runtime/environment.js';
+import { createBrowserEnvironment, createLocationPermissions } from './extension/runtime/environment.js';
 import { installFetchBridge } from './extension/runtime/bridge.js';
+import { createExtensionNotificationClient } from './extension/runtime/notifications.js';
 import { defaultWidgetState } from './features/widgets.js';
 import { defaultDeviceSettings } from './features/settings.js';
 import { buildExtension, projectRoot } from './extension/build.js';
 import { exportWebData } from './extension/export-data.js';
 import { DatabaseSync } from 'node:sqlite';
+import { inspectUpgradePackage } from './features/upgrade-package.js';
+import { createHash } from 'node:crypto';
 
 const ID = 'abcdefghijklmnopabcdefghijklmnop';
 const SENDER = { id: ID, url: `chrome-extension://${ID}/index.html`, documentId: 'first-page' };
@@ -28,25 +31,121 @@ function memoryStorage() {
   };
 }
 
-function setup({ storage = memoryStorage(), environment } = {}) {
+function setup({ storage = memoryStorage(), environment, permissions, notificationFetch, now = () => NOW } = {}) {
   let calls = 0;
   const service = environment || createBrowserEnvironment({ permissions: { contains: async () => false }, fetchImpl: async () => { calls += 1; throw new Error('must not fetch'); }, now: () => NOW });
-  const api = createExtensionApi({ storage, extensionId: ID, environment: service, now: () => NOW });
+  const api = createExtensionApi({ storage, extensionId: ID, environment: service, permissions, notificationFetch, now });
   const request = (path, method = 'GET', body, revision, sender = SENDER) => api({ channel: RPC_CHANNEL, path, method, body, ifMatch: revision === undefined ? undefined : `"${revision}"` }, sender);
   return { storage, api, request, get externalCalls() { return calls; } };
 }
+
+test('notification feeds require a user-approved HTTPS host and preserve read state through refresh and restart', async () => {
+  const authorized = new Set();
+  const requests = [];
+  const permissions = {
+    async request({ origins }) {
+      requests.push(origins);
+      origins.forEach(origin => authorized.add(origin));
+      return true;
+    },
+    async contains({ origins }) { return origins.every(origin => authorized.has(origin)); },
+  };
+  const calls = [];
+  let now = NOW;
+  const first = { id: '42', title: '<b>构建完成</b>', publishedAt: new Date(NOW).toISOString(), url: 'javascript:example' };
+  let messages = [first, first];
+  const notificationFetch = async (url, options) => {
+    calls.push(url);
+    assert.equal(options.credentials, 'omit');
+    assert.equal(options.referrerPolicy, 'no-referrer');
+    assert.equal(options.redirect, 'error');
+    assert.ok(options.signal instanceof AbortSignal);
+    return Response.json({ messages });
+  };
+  const app = setup({ permissions, notificationFetch, now: () => now });
+  const path = '/api/notifications';
+  const source = { name: '构建', url: 'https://feed.example.com:8443/notifications' };
+  assert.equal((await app.request(path, 'POST', { action: 'addSource', source })).status, 403);
+  assert.equal((await app.request(path, 'GET', undefined, undefined, { id: 'different-extension', url: SENDER.url })).status, 403);
+  assert.equal(calls.length, 0);
+  const client = createExtensionNotificationClient({ permissions, request: async body => {
+    const response = await app.request(path, body ? 'POST' : 'GET', body);
+    assert.equal(response.status, 200);
+    return response.body;
+  } });
+  await assert.rejects(client.addSource({ ...source, url: 'http://feed.example.com/notifications' }), { status: 400 });
+  assert.equal(requests.length, 0);
+  const { sources } = await client.addSource(source);
+  assert.deepEqual(requests, [['https://feed.example.com/*']]);
+  await Promise.all([client.refresh(), client.refresh()]);
+  assert.deepEqual(calls, [source.url]);
+  const inbox = await client.getSnapshot();
+  assert.equal(inbox.unreadCount, 1);
+  assert.equal(inbox.messages[0].url, null);
+  assert.equal(inbox.messages[0].title, '<b>构建完成</b>');
+  await client.markRead(sources[0].id, first.id);
+  now += 60001;
+  messages = [first, { id: '43', title: '新消息', publishedAt: new Date(now).toISOString() }];
+  assert.equal((await client.refresh()).unreadCount, 1);
+  const restored = setup({ storage: app.storage, permissions, notificationFetch, now: () => now });
+  assert.deepEqual((await restored.request(path)).body.messages.map(item => [item.id, item.read]), [['43', false], ['42', true]]);
+  assert.equal((await restored.request(path, 'POST', { action: 'markAllRead' })).body.unreadCount, 0);
+  assert.equal((await restored.request(path, 'POST', { action: 'removeSource', id: sources[0].id })).body.messages.length, 0);
+});
+
+test('a malformed or oversized notification feed and revoked permission retain the prior inbox', async () => {
+  let now = NOW;
+  let allowed = true;
+  let response = () => Response.json({ messages: [{ id: '1', title: '保留通知', publishedAt: new Date(NOW).toISOString() }] });
+  let calls = 0;
+  const app = setup({ permissions: { contains: async () => allowed }, now: () => now, notificationFetch: async () => {
+    calls++;
+    return response();
+  } });
+  const refresh = async () => {
+    now += 60001;
+    return (await app.request('/api/notifications', 'POST', { action: 'refresh', force: false })).body;
+  };
+  const input = { action: 'addSource', source: { name: '站点', url: 'https://feed.example.com/notifications' } };
+  assert.equal((await app.request('/api/notifications', 'POST', input)).status, 200);
+  const first = await refresh();
+  assert.equal(first.unreadCount, 1);
+  const failures = [
+    () => Response.json({ messages: [{ id: 2 }] }),
+    () => new Response(' '.repeat(128 * 1024 + 1), { headers: { 'Content-Type': 'application/json' } }),
+    () => new Response('redirect', { status: 302 }),
+  ];
+  for (const fail of failures) {
+    response = fail;
+    const snapshot = await refresh();
+    assert.ok(snapshot.sources[0].error);
+    assert.equal(snapshot.sources[0].lastSuccessAt, first.sources[0].lastSuccessAt);
+    assert.deepEqual(snapshot.messages, first.messages);
+  }
+  allowed = false;
+  const revoked = await refresh();
+  assert.match(revoked.sources[0].error, /允许访问/);
+  assert.deepEqual(revoked.messages, first.messages);
+  assert.equal(calls, 4);
+});
 
 test('extension stores portal, widgets and device settings offline and recovers after worker recreation', async () => {
   const app = setup();
   assert.equal((await app.request('/api/health')).body.mode, 'extension');
   assert.equal((await app.request('/api/state')).body.state, null);
+  const initialWidgets = (await app.request('/api/widgets/state')).body.state;
+  assert.deepEqual(initialWidgets.layout.map(item => item.size ?? 'compact'), [
+    'square', 'compact', 'compact', 'compact', 'square', 'compact',
+  ]);
   assert.equal((await app.request('/api/state', 'PATCH', portal, 0)).status, 200);
   assert.equal((await app.request('/api/widgets/state', 'PATCH', { todos: [{ id: 't1', text: '离线完成', completed: false }] }, 0)).status, 200);
   const clock = { ...defaultDeviceSettings().clock, mode: 'manual', offsetSeconds: 120 };
   assert.equal((await app.request('/api/device/settings', 'PATCH', { clock }, 0)).status, 200);
   const restored = setup({ storage: app.storage });
   assert.deepEqual((await restored.request('/api/state')).body.state, portal);
-  assert.equal((await restored.request('/api/widgets/state')).body.state.todos[0].text, '离线完成');
+  const restoredWidgets = (await restored.request('/api/widgets/state')).body.state;
+  assert.equal(restoredWidgets.todos[0].text, '离线完成');
+  assert.deepEqual(restoredWidgets.layout, initialWidgets.layout);
   const time = (await restored.request('/api/time?browserTimeZone=Asia%2FShanghai')).body;
   assert.equal(time.displayEpochMs, NOW + 120000);
   assert.equal(time.timeSource, 'device');
@@ -143,6 +242,41 @@ test('missing network permissions leave offline functions and clock usable witho
   assert.equal(app.externalCalls, 0);
 });
 
+test('extension city search grants only city and weather origins, and automatic location prefers browser coordinates', async () => {
+  const granted = new Set();
+  const permissions = {
+    request: async ({ origins }) => {
+      for (const origin of origins) granted.add(origin);
+      return true;
+    },
+    contains: async ({ origins }) => origins.every(origin => granted.has(origin)),
+  };
+  const calls = [];
+  const environment = createBrowserEnvironment({ permissions, fetchImpl: async url => {
+    calls.push(url.href);
+    if (url.pathname === '/api/v1/network/myip') return Response.json({ region: '中国 上海', latitude: 31.23, longitude: 121.47 });
+    return Response.json({ results: [
+      { adcode: '310000', name: '上海市', level: 'province', province: '上海市', country_code: 'CN', center: { lat: 31.23, lng: 121.47 } },
+    ] });
+  } });
+  const app = setup({ environment });
+  const query = '/api/location/search?q=' + encodeURIComponent('上海市');
+  assert.equal((await app.request(query)).status, 403);
+  await createLocationPermissions(permissions).requestCitySearch();
+  assert.deepEqual([...granted], ['https://uapis.cn/*', 'https://geocoding-api.open-meteo.com/*', 'https://api.open-meteo.com/*']);
+  assert.equal((await app.request(query)).body.locations[0].name, '上海市');
+  assert.equal(new URL(calls[0]).searchParams.get('adcode'), '310000');
+  const exact = await app.request('/api/environment/resolve', 'POST', {
+    browserTimeZone: 'Asia/Shanghai', coordinates: { latitude: 31.1, longitude: 121.2 },
+  });
+  assert.equal(exact.body.location.source, 'browser');
+  assert.equal(calls.length, 1);
+  const fallback = await app.request('/api/environment/resolve', 'POST', {});
+  assert.equal(fallback.body.location.source, 'ip');
+  assert.equal(fallback.body.location.approximate, true);
+  assert.equal(calls[1], 'https://uapis.cn/api/v1/network/myip');
+});
+
 test('granted extension weather requests use only the fixed HTTPS provider and stop networking after revocation', async () => {
   let allowed = true;
   let now = NOW;
@@ -207,19 +341,56 @@ test('fetch bridge supports extension-origin relative APIs, status codes and abo
   assert.equal((await target.fetch('/api/state', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{' })).status, 400);
 });
 
+test('extension exchange rate requests only reach the provider after specific host permission', async () => {
+  let granted = false;
+  let calls = 0;
+  const api = createExtensionApi({
+    storage: memoryStorage(), extensionId: ID, now: () => NOW,
+    permissions: { async contains(value) {
+      assert.deepEqual(value, { origins: ['https://api.frankfurter.dev/*'] });
+      return granted;
+    } },
+    async exchangeRateFetch(url) {
+      assert.equal(url.href, 'https://api.frankfurter.dev/v2/rate/USD/CNY');
+      calls++;
+      return Response.json({ base: 'USD', quote: 'CNY', rate: 7, date: '2026-11-04' });
+    },
+  });
+  const request = path => api({ channel: RPC_CHANNEL, path }, SENDER);
+  assert.equal((await request('/api/exchange-rate?base=USD&quote=CNY')).status, 403);
+  assert.equal((await request('/api/exchange-rate?base=USD&quote=USD')).body.rate, 1);
+  assert.equal(calls, 0);
+  granted = true;
+  assert.equal((await request('/api/exchange-rate?base=USD&quote=CNY')).body.rate, 7);
+  assert.equal((await request('/api/exchange-rate?base=USD&quote=CNY')).body.cache.hit, true);
+  assert.equal((await request('/api/exchange-rate?base=USD&quote=CNY&url=bad')).status, 400);
+  assert.equal(calls, 1);
+});
+
 test('build contains local modules and minimal permissions, applies package-only protocol adaptation and never copies private files', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'agy-extension-build-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const before = await readFile(join(projectRoot, 'frontend/app.js'), 'utf8');
-  const built = await buildExtension({ outputRoot: directory, zip: false });
+  const built = await buildExtension({ outputRoot: directory });
   const manifest = JSON.parse(await readFile(join(built.directory, 'manifest.json'), 'utf8'));
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.name, 'LaunchDeck');
+  const zip = await readFile(built.archive);
+  const file = new Blob([zip]);
+  const expectedSha256 = createHash('sha256').update(zip).digest('hex');
+  assert.deepEqual(await inspectUpgradePackage(file, { currentVersion: '0.1.0', expectedSha256 }), {
+    version: manifest.version, currentVersion: '0.1.0', comparison: 'newer', integrity: 'matched',
+  });
+  assert.equal((await inspectUpgradePackage(file, { currentVersion: manifest.version })).comparison, 'same');
+  assert.equal((await inspectUpgradePackage(file, { currentVersion: '100.0.0' })).comparison, 'older');
+  await assert.rejects(inspectUpgradePackage(file, { expectedSha256: '0'.repeat(64) }), /不匹配/);
+  await assert.rejects(inspectUpgradePackage(file.slice(0, -1)), /ZIP/);
   assert.equal(built.directory, join(directory, 'launchdeck-new-tab'));
   const marker = JSON.parse(await readFile(join(built.directory, '.launchdeck-generated.json'), 'utf8'));
   assert.equal(marker.generatedBy, 'LaunchDeck');
   assert.equal(manifest.chrome_url_overrides.newtab, 'index.html');
-  assert.deepEqual(manifest.permissions, ['storage', 'favicon']);
+  assert.deepEqual(manifest.permissions, ['storage', 'favicon', 'geolocation']);
+  assert.equal(manifest.optional_permissions?.includes('geolocation'), undefined);
   assert.equal(manifest.web_accessible_resources, undefined);
   assert.equal(manifest.host_permissions, undefined);
   assert.ok(manifest.optional_host_permissions.every(origin => origin.startsWith('https://') && !origin.includes('localhost')));

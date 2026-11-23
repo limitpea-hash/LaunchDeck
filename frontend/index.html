@@ -7,7 +7,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>新标签页</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="site-tiles.css" />
+  <link rel="stylesheet" href="widgets/calendar-agenda.css" />
+  <link rel="stylesheet" href="widgets/vertical-cards.css" />
+  <link rel="stylesheet" href="widgets/daily-widgets.css" />
+  <link rel="stylesheet" href="widgets/import-currency.css" />
   <link rel="stylesheet" href="lib/ui/controls.css" />
+  <link rel="stylesheet" href="lib/desktop-pointer-drag.css" />
 </head>
 <body data-icon-mode="light" data-icon-size="small" data-wallpaper="ios18-bloom">
   <!-- Dynamic iOS 18 Mesh Wallpaper Layer -->
@@ -51,13 +57,17 @@
       </div>
 
       <div class="status-center">
-        <div class="dynamic-island" id="dynamicIsland" role="region" aria-label="快捷入口">
-          <div class="island-compact">
-            <span class="island-pulse" id="islandPulse"></span>
-            <span class="island-text" id="islandText">智能起始页 · 桌面与小组件</span>
-            <button type="button" class="island-kbd" id="openSettingsFromIslandBtn" title="打开小组件、位置与时间设置">设置</button>
-          </div>
-        </div>
+        <button
+          class="dynamic-island notification-island-pill"
+          id="dynamicIsland"
+          type="button"
+          aria-label="未读通知收件箱"
+          hidden
+        >
+          <span class="island-source-avatar" id="islandSourceInitial" aria-hidden="true">N</span>
+          <span class="island-source-name" id="islandSourceName">通知</span>
+          <span class="island-unread-badge" id="islandUnreadCount">0 条未读</span>
+        </button>
       </div>
 
       <div class="status-right">
@@ -91,12 +101,12 @@
           </svg>
           <span class="btn-label-text">添加</span>
         </button>
-        <button class="top-glass-btn" id="openSettingsModalBtn" type="button" title="管理位置、天气、时间与数据同步">
+        <button class="top-glass-btn" id="openSettingsModalBtn" type="button" title="设置：位置、天气、时间、通知、API 接入与数据同步" aria-label="设置">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
-          <span class="btn-label-text">位置与时间</span>
+          <span class="btn-label-text">设置</span>
         </button>
         <button class="top-glass-btn" id="openCustomizeBtn" type="button" title="iOS 18 自定义图标与色调">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -250,7 +260,7 @@
         <span class="customize-subtitle">实时调整图标材质、专属色调与壁纸氛围</span>
       </div>
       <div class="customize-actions">
-        <button class="sheet-text-btn" id="openApiConfigBtn" type="button" title="打开位置、时间与数据同步设置">位置与时间设置</button>
+        <button class="sheet-text-btn" id="openApiConfigBtn" type="button" title="打开设置（位置、时间、通知、API 接入与数据同步）">设置</button>
         <button class="sheet-text-btn" id="resetDefaultBtn" type="button" title="恢复初始默认图标与排序">恢复默认</button>
         <button class="sheet-close-btn" id="closeCustomizeBtn" type="button" aria-label="关闭自定义面板">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
@@ -295,6 +305,9 @@
             </svg>
             <span>压暗</span>
           </button>
+          <button class="dim-wallpaper-btn follow-system-night-btn" id="followSystemNightBtn" type="button" aria-pressed="true" title="昼夜主题自动跟随操作系统浅色/深色设置">
+            <span>跟随系统</span>
+          </button>
         </div>
       </div>
 
@@ -327,7 +340,7 @@
       <div class="wallpaper-picker-row">
         <span class="picker-label">动态流体壁纸</span>
         <div class="wallpaper-swatches" id="wallpaperSwatches">
-          <button class="swatch-btn active" type="button" data-wp="ios18-bloom" title="iOS 18 经典流光蓝粉">
+          <button class="swatch-btn active" type="button" data-wp="ios18-bloom" title="iOS 18 经典流光（随昼夜自动变换深邃极夜光晕）">
             <span class="swatch-preview wp-bloom"></span>
             <span class="swatch-name">iOS 18 流光</span>
           </button>
@@ -492,14 +505,17 @@
     <div class="ios-modal-card settings-modal-card" role="dialog" aria-modal="true" aria-labelledby="apiModalTitle">
       <div class="modal-top-bar">
         <button type="button" class="modal-cancel-btn" id="closeApiModalBtn">关闭</button>
-        <h3 id="apiModalTitle">位置、时间与数据同步设置</h3>
+        <h3 id="apiModalTitle">设置</h3>
         <button type="button" class="modal-save-btn" id="saveApiConfigBtn">刷新状态</button>
       </div>
 
-      <div class="settings-tabs-nav" role="tablist" aria-label="设置分类">
-        <button type="button" class="settings-tab-btn active" data-tab="location" role="tab" aria-selected="true">位置与天气</button>
-        <button type="button" class="settings-tab-btn" data-tab="clock" role="tab" aria-selected="false">时间与时区</button>
-        <button type="button" class="settings-tab-btn" data-tab="sync" role="tab" aria-selected="false">数据同步</button>
+      <div class="settings-tabs-nav settings-tabs-nav-scroll" role="tablist" aria-label="设置分类">
+        <button type="button" class="settings-tab-btn active" data-tab="location" role="tab" aria-selected="true" aria-controls="settingsPanelLocation">位置与天气</button>
+        <button type="button" class="settings-tab-btn" data-tab="clock" role="tab" aria-selected="false" aria-controls="settingsPanelClock">时间与时区</button>
+        <button type="button" class="settings-tab-btn" data-tab="notifications" role="tab" aria-selected="false" aria-controls="settingsPanelNotifications">通知</button>
+        <button type="button" class="settings-tab-btn" data-tab="api" role="tab" aria-selected="false" aria-controls="settingsPanelApi">API 接入</button>
+        <button type="button" class="settings-tab-btn" data-tab="update" role="tab" aria-selected="false" aria-controls="settingsPanelUpdate">更新与组件</button>
+        <button type="button" class="settings-tab-btn" data-tab="sync" role="tab" aria-selected="false" aria-controls="settingsPanelSync">数据同步</button>
       </div>
 
       <div class="modal-form settings-modal-body">
@@ -525,7 +541,7 @@
           <div class="form-group">
             <label for="citySearchInput">搜索并选择手动城市</label>
             <div class="city-search-bar">
-              <input type="text" id="citySearchInput" placeholder="输入城市名称（至少 2 个字符，如：上海、London）" maxlength="100" autocomplete="off" />
+              <input type="text" id="citySearchInput" placeholder="如：北京、上海、广州、深圳" maxlength="100" autocomplete="off" />
               <button type="button" class="ui-btn ui-btn-primary" id="citySearchBtn">搜索城市</button>
             </div>
             <div class="city-search-results" id="citySearchResults"></div>
@@ -602,7 +618,130 @@
           </div>
         </section>
 
-        <!-- Tab 3: Sync & Backup Diagnostics -->
+        <!-- Tab 3: Notification Subscriptions & Inbox History -->
+        <section class="settings-tab-panel" id="settingsPanelNotifications" data-panel="notifications" hidden>
+          <div class="settings-sub-box notification-inbox-box" id="notificationInboxSection">
+            <div class="settings-row-between notification-section-header">
+              <div class="notification-header-title-wrap">
+                <h4 class="settings-sub-title">通知收件箱与历史</h4>
+                <span class="settings-widget-size-pill" id="notificationInboxSummaryBadge">暂无消息</span>
+              </div>
+              <div class="settings-inline-actions">
+                <button type="button" class="ui-btn ui-btn-sm" id="notificationRefreshNowBtn" disabled>立即刷新</button>
+                <button type="button" class="ui-btn ui-btn-primary ui-btn-sm" id="notificationMarkAllReadBtn" disabled>全部标为已读</button>
+              </div>
+            </div>
+            <div class="notification-inbox-list" id="notificationInboxList" role="region" aria-label="通知收件箱消息列表"></div>
+          </div>
+          <p class="settings-help-text notification-api-hint">订阅来源在「API 接入」选项卡中添加与管理。</p>
+        </section>
+
+        <!-- Tab 4: API 接入 (HTTPS JSON notification sources; same permission & protocol) -->
+        <section class="settings-tab-panel" id="settingsPanelApi" data-panel="api" role="tabpanel" hidden>
+          <div class="settings-sub-box notification-sources-box" id="notificationSourcesSection">
+            <div class="settings-row-between notification-section-header">
+              <div class="notification-header-title-wrap">
+                <h4 class="settings-sub-title">添加 HTTPS JSON 订阅源</h4>
+                <span class="settings-widget-size-pill" id="notificationSourcesCountBadge">0/8 个来源</span>
+              </div>
+            </div>
+            <form class="notification-add-form" id="notificationAddSourceForm" novalidate>
+              <div class="form-row-two settings-form-grid notification-form-grid">
+                <div class="form-group">
+                  <label for="notificationSourceNameInput">来源名称（1–60 字符）</label>
+                  <input
+                    type="text"
+                    id="notificationSourceNameInput"
+                    placeholder="例如：构建状态、监控告警"
+                    maxlength="60"
+                    autocomplete="off"
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="notificationSourceUrlInput">HTTPS JSON 订阅地址</label>
+                  <input
+                    type="url"
+                    id="notificationSourceUrlInput"
+                    placeholder="https://example.com/notifications.json"
+                    autocomplete="off"
+                    required
+                  />
+                </div>
+              </div>
+              <div class="settings-row-between">
+                <span class="settings-help-text">仅支持 HTTPS JSON 直连（不携带 Cookie/Referrer，不跟随重定向，请勿在 URL 中包含密钥或 # 片段）。</span>
+                <button type="submit" class="ui-btn ui-btn-primary ui-btn-sm" id="notificationAddSourceBtn">添加订阅源</button>
+              </div>
+            </form>
+            <div class="notification-sources-list" id="notificationSourcesList" role="region" aria-label="已添加的通知订阅源"></div>
+          </div>
+
+          <div class="api-hint-box" id="notificationSettingsStatusBox" data-status-tone="neutral">
+            <span class="api-hint-dot"></span>
+            <span id="notificationSettingsStatusText" role="status" aria-live="polite">通知订阅已就绪</span>
+          </div>
+        </section>
+
+        <!-- Tab: 更新与组件 (local-only widget import & upgrade package inspection) -->
+        <section class="settings-tab-panel update-settings-panel" id="settingsPanelUpdate" data-panel="update" role="tabpanel" hidden>
+          <div class="settings-sub-box" id="widgetPackageSection">
+            <div class="settings-row-between">
+              <h4 class="settings-sub-title">导入组件包（.json）</h4>
+            </div>
+            <p class="settings-help-text">选择本机的 LaunchDeck 组件 JSON 文件，先在下方预览，确认后才会添加到当前导航页。文件只在本机读取，不会上传。</p>
+            <div class="update-file-row">
+              <label class="ui-btn ui-btn-sm update-file-label" for="widgetPackageInput">选择组件文件</label>
+              <button type="button" class="ui-btn ui-btn-sm" id="widgetPackageSampleBtn" title="下载一个可直接导入的文字卡片示例 JSON">下载示例</button>
+              <input type="file" id="widgetPackageInput" class="update-file-input" accept=".json,application/json" />
+              <button type="button" class="ui-btn ui-btn-sm" id="widgetPackageResetBtn" disabled>清除选择</button>
+            </div>
+            <div class="update-preview" id="widgetPackagePreview" aria-live="polite" hidden></div>
+            <div class="settings-row-between">
+              <span class="update-status" id="widgetPackageStatus" role="status" aria-live="polite" hidden></span>
+              <button type="button" class="ui-btn ui-btn-primary ui-btn-sm" id="widgetPackageConfirmBtn" disabled>确认添加到当前页</button>
+            </div>
+          </div>
+
+          <div class="settings-sub-box" id="upgradePackageSection">
+            <div class="settings-row-between">
+              <h4 class="settings-sub-title">本地更新包（.zip）</h4>
+              <span class="settings-widget-size-pill">当前版本 <span id="updateInstalledVersion">—</span></span>
+            </div>
+            <p class="settings-help-text">仅在本机检查 ZIP 的结构、LaunchDeck 标记、版本与可选 SHA-256，不会执行包内任何内容，也不会联网下载或上传。</p>
+            <div class="update-file-row">
+              <label class="ui-btn ui-btn-sm update-file-label" for="upgradePackageInput">选择更新包</label>
+              <input type="file" id="upgradePackageInput" class="update-file-input" accept=".zip,application/zip,application/x-zip-compressed" />
+              <button type="button" class="ui-btn ui-btn-sm" id="upgradeResetBtn" disabled>清除选择</button>
+            </div>
+            <div class="form-group">
+              <label for="upgradeShaInput">发布方提供的 SHA-256（可选）</label>
+              <div class="update-file-row">
+                <input type="text" id="upgradeShaInput" class="update-sha-input" maxlength="80" autocomplete="off" spellcheck="false" placeholder="64 位十六进制，留空则不校验" />
+                <button type="button" class="ui-btn ui-btn-sm" id="upgradeVerifyBtn" disabled>重新检查</button>
+              </div>
+            </div>
+            <span class="update-status" id="upgradeStatus" role="status" aria-live="polite" hidden></span>
+            <div class="update-preview" id="upgradeResultBox" aria-live="polite" hidden></div>
+
+            <div class="update-steps">
+              <p class="update-warning">此页面无法直接应用更新包。请只使用可信来源的 LaunchDeck 安装包，按以下步骤手动更新：</p>
+              <ol class="update-steps-list">
+                <li>将 ZIP 解压，并用其中的文件覆盖当前已加载的同一个扩展文件夹（不要换新位置）。</li>
+                <li>在 <span id="updateManageBrowserName">浏览器</span> 新标签页打开下面的扩展管理地址。</li>
+                <li>找到 LaunchDeck，点击「重新加载」，然后刷新本页。</li>
+              </ol>
+              <div class="update-file-row">
+                <input type="text" id="updateManageUrlInput" class="update-manage-url" readonly value="chrome://extensions" aria-label="扩展管理地址" />
+                <button type="button" class="ui-btn ui-btn-sm" id="updateCopyManageUrlBtn">复制地址</button>
+              </div>
+              <span class="update-status" id="updateCopyStatus" role="status" aria-live="polite" hidden></span>
+              <p class="settings-help-text">Chrome 使用 chrome://extensions，Edge 使用 edge://extensions。浏览器不允许网页直接打开这些地址，请粘贴到地址栏。</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 5: Sync & Backup Diagnostics -->
         <section class="settings-tab-panel" id="settingsPanelSync" data-panel="sync" hidden>
           <div class="api-hint-box">
             <span class="api-hint-dot" id="syncDotPortal"></span>

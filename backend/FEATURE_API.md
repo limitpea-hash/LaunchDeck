@@ -11,6 +11,10 @@
 - 新接口按 socket 来源 IP 限制每分钟 120 次，其中环境、城市搜索和天气接口合计每分钟 30 次。忽略客户端传入的代理 IP 头。实际外部请求最多并发 4 个、每分钟 60 个，缓存命中不占外部请求额度。
 - 外部请求仅允许固定 HTTPS 数据源，拒绝重定向，5 秒超时，响应最多 256 KB。不得传入任意 URL。
 
+## 网站方块尺寸
+
+`/api/state` 的 `sites` 每项可带 `size`。支持 `single`（1×1）和 `square`（2×2），缺省按 1×1 显示。页面编辑模式修改此字段。Dock 和文件夹内沿用紧凑图标。网站尺寸随完整备份和导航备份一并保存。
+
 ## GET /api/widgets
 
 返回 `{ schemaVersion: 1, widgets: WidgetDefinition[] }`。每项包含：
@@ -20,13 +24,27 @@
   "type": "todo",
   "title": "待办清单",
   "version": 1,
-  "sizes": ["compact", "square", "wide"],
+  "sizes": ["compact", "square", "tall"],
+  "legacySizes": { "wide": "tall" },
   "defaultConfig": { "hideCompleted": false },
   "capabilities": ["shared-todos"]
 }
 ```
 
-已注册六种类型：`clock-weather`、`focus-timer`、`quick-note`、`todo`、`calendar`、`world-clock`。`capabilities` 是代码约定与数据需求说明，不是任意代码的安全沙箱。
+默认桌面启用六种类型：`clock-weather`、`focus-timer`、`quick-note`、`todo`、`calendar`、`world-clock`。`capabilities` 描述本地组件的数据需求。
+
+定义可提供 `defaultSize`。时钟与天气和月历均默认 `square`，分别可选 `landscape` 和 `full`。待办和世界时钟支持 `tall`。以下类型的 `defaultEnabled` 为 `false`，从编辑模式按需添加。
+
+| 类型 | 默认尺寸 | 其他可选尺寸 |
+| --- | --- | --- |
+| `weather-badge` | `single` | `compact`、`square` |
+| `date-tile` | `single` | `square` |
+| `focus-launcher` | `single` | `compact` |
+| `countdown` | `single` | `compact`、`square` |
+| `habits` | `tall` | `square` |
+| `today-dashboard` | `large` | `square` |
+| `weather-strip` | `strip` | `compact` |
+| `currency-converter` | `square` | — |
 
 ## GET /api/widgets/state / PATCH /api/widgets/state
 
@@ -37,7 +55,7 @@
   "revision": 0,
   "state": {
     "layout": [
-      { "id": "todo", "type": "todo", "enabled": true, "order": 3, "size": "wide", "config": { "hideCompleted": false } }
+      { "id": "todo", "type": "todo", "enabled": true, "order": 3, "size": "tall", "config": { "hideCompleted": false } }
     ],
     "todos": [
       { "id": "todo_1", "text": "编写一个自己的组件", "completed": false, "dueDate": "2026-11-04" }
@@ -47,12 +65,14 @@
 }
 ```
 
-上例仅演示字段；实际默认布局包含全部六种组件，全部启用，顺序为 0–5；待办默认为空。
+上例仅演示字段。默认布局包含六种预置组件，顺序为 0–5。新建文档携带时钟天气和月历的默认 `size`，待办默认为空。
 
 PATCH 示例：`{ "todos": [] }`。支持字段 `layout`、`todos`、`desktop`，至少一项。允许空布局与空待办。
 
 - `layout` 最多 24 项；`id` 必须唯一，1–80 位字母、数字、下划线或连字符；`order` 为 0–23 的唯一整数，前端按 order 排序。
-- 可选 `size` 必须在对应类型的 `sizes` 中。`compact` 为 2 列 × 1 行，`square` 为 2 列 × 2 行，`wide` 为 4 列 × 2 行。专注计时支持前两种。旧记录省略该字段，显示为 `compact`。窗口缩小时可调整实际显示尺寸，保存值仍代表用户的选择。
+- `sizes` 列出当前可选尺寸，按列 × 行计，`single` 为 1×1、`compact` 为 2×1、`square` 为 2×2、`tall` 为 2×3、`landscape` 为 3×2、`large` 为 3×3、`full` 为 4×4、`strip` 为 4×1。
+- `legacySizes` 给出各类型的旧尺寸转换。时钟与天气的 2×1、2×3 和 4×2 转为 2×2。月历的 3×3 转为 4×4，2×1 和 4×2 转为 2×2。待办和世界时钟的 4×2 转为 2×3，速记和导入组件的 4×2 转为 2×2，逐小时天气的 4×2 转为 4×1，汇率卡的 1×1 和 2×1 转为 2×2。读取时返回转换后的尺寸，保持当前修订号，下一次正常写入时保存。
+- 容量不足时，3×2 时钟与天气和 4×4 月历临时显示为 2×2，恢复空间后按保存的尺寸显示。2×2 放不下时，可从「查看全部」进入详情。
 - 类型必须注册；`enabled` 为布尔值。`config` 严格白名单如下：
 
 | 类型 | 完整 config | 限制 |
@@ -61,11 +81,20 @@ PATCH 示例：`{ "todos": [] }`。支持字段 `layout`、`todos`、`desktop`�
 | `focus-timer` | `{ workMinutes: 25, breakMinutes: 5 }` | 整数，分别 1–180 / 1–60 分钟 |
 | `quick-note` | `{}` | 内容继续存旧 `/api/state.note` |
 | `todo` | `{ hideCompleted: false }` | 布尔值；内容存本接口 todos |
-| `calendar` | `{ weekStartsOn: 1 }` | 0 表示周日、1 表示周一；没有日程账户接入 |
+| `calendar` | `{ weekStartsOn: 1, marks: [] }` | 0 表示周日、1 表示周一。可选 `marks` 保存最多 128 条 `{ date, title, color }`。日期为真实的 `YYYY-MM-DD`，同一日期唯一，标题为去除首尾空白后 1–60 字符的纯文本，颜色为 `red`、`amber`、`green`、`blue` 或 `violet` |
 | `world-clock` | `{ zones: [{ label: "上海", timeZone: "Asia/Shanghai" }] }` | 1–8 个地点，名称最多 60 字符，合法 IANA 时区 |
+| `weather-badge`、`date-tile`、`focus-launcher`、`today-dashboard`、`weather-strip` | `{}` | 读取现有环境、时钟、专注或待办数据 |
+| `countdown` | `{ title: "倒计时", targetDate: null }` | 标题 1–60 字符，日期为 `null` 或真实 `YYYY-MM-DD` |
+| `habits` | `{ habits: [] }` | 最多 8 项 `{ id, title, checkedDates }`。ID 唯一，标题 1–60 字符，每项保存最多 90 个互不重复的真实 `YYYY-MM-DD` |
+| `currency-converter` | `{ base: "CNY", quote: "USD" }` | 支持的币种代码；金额保留在当前页面 |
+| `imported-card` | 组件包的 `card` 对象 | 按下方的模板字段校验；添加时生成独立组件 ID |
 
 - `todos` 最多 200 条；`id` 规则同上且不能重复；`text` 为 1–500 字符纯文本；`completed` 为布尔值；可选 `dueDate` 为 null 或真实存在的 `YYYY-MM-DD` 日期。
 - 请求体最多 512 KB。未知字段（如 script、HTML、模块 URL）拒绝保存。
+
+月历按日期显示此文档中的到期待办和个人标记。完整数据备份包含标记，导航备份仅包含卡片排列。中国大陆放假及调休数据在网页及扩展内置，覆盖 2025–2027 年。直接使用 `/platform/features/china-holidays.js` 的 `getChinaHoliday(date)` 查询，结果为 `{ kind, name }` 或 `null`。`kind` 为 `holiday` 或 `workday`。`hasChinaHolidaySchedule(year)` 判断年份是否有节假日安排。
+
+来源 [2025 年国务院公报](https://www.gov.cn/gongbao/2024/issue_11726/material/gwygb202433.pdf) · [2026 年国务院办公厅通知](https://zwfw.gansu.gov.cn/huixian/zczx/tzgg/art/2025/art_715c16a75e4d4c289c295e77772c7274.html) · [2027 年国务院办公厅通知](https://chinajob.mohrss.gov.cn/h5/c/2026-11-09/635850.shtml)
 
 ### 混排桌面（扩展 0.3.0 / Web）
 
@@ -86,6 +115,7 @@ PATCH 示例：`{ "todos": [] }`。支持字段 `layout`、`todos`、`desktop`�
 
 - 5–50 个页面，包含 all/ai/design/dev/media；自定义 ID 为 page_ 加 1–64 个字母数字下划线连字符。标题 1–100 字符，图标仅 sparkles/folder/code/book/globe，isSystem 与 ID 一致，order 为 0–49 且唯一。
 - 最多 5000 条 placement，kind 仅 site/widget，id 为 1–100 位字母数字下划线连字符，pageId 必须存在。同页 order 为 0–4999 且唯一，同页同 kind/id 唯一；站点可以跨页有镜像。
+- 网站和小组件可保存 `cell: { row, column }`。行号为 0–49、列号为 0–47，同一页面的固定起点唯一。缺省按原顺序自动摆放。保存页面与格子走同一次桌面 PATCH。前端按当前网格和卡片尺寸计算占位与临时回退。固定格子随导航及完整备份保存。
 - 每个启用组件恰好一个 placement，隐藏或不存在的组件不能放置。变更启用状态时与 desktop 一起提交，数据库在事务内校验合并后的完整文档；失败不会增加 revision。仅更新 todos 或 config 会保留 desktop。
 - 移除组件只设 enabled=false 并移除 placement，保留配置、待办、便签。位置记录只存引用，不接受 URL、HTML 或模块名；站点定义由原站点接口管理。其他设备暂缺定义的站点引用应保留，不能静默删除。
 - Web 与扩展使用相同校验，备份可以往返保存 desktop，旧备份仍可导入。详细迁移与交互契约见根目录 TASK.md 当前任务。
@@ -194,17 +224,17 @@ PATCH 支持 `location`、`clock`、`weather`，至少一项，每项为完整�
 
 ## GET /api/location/search?q=上海
 
-城市搜索，关键词 2–100 字符，最多返回 8 项：
+城市搜索，关键词 2–100 字符。普通搜索最多返回 8 项，搜索大陆省名时最多返回 40 个下辖城市：
 
 ```json
 {
-  "locations": [{ "id": "1796236", "name": "上海", "latitude": 31.23, "longitude": 121.47, "timeZone": "Asia/Shanghai", "country": "中国", "region": "上海" }],
-  "provider": "Open-Meteo / GeoNames",
+  "locations": [{ "id": "310000", "name": "上海市", "latitude": 31.23, "longitude": 121.47, "timeZone": "Asia/Shanghai", "country": "中国", "region": "上海市" }],
+  "provider": "UAPI",
   "cache": { "hit": false, "stale": false }
 }
 ```
 
-用户必须从匹配城市中选择，不能把未解析的名称当作有效坐标。城市文本按纯文本渲染。缓存一小时。
+大陆查询以六位行政区划代码校验省份和去重，支持「揭阳」「成都市」等写法。输入「广东」会列出下辖城市，可直接选择。国际城市继续使用 Open-Meteo / GeoNames。城市结果按纯文本渲染，缓存一小时。
 
 ## POST /api/environment/resolve
 
@@ -250,6 +280,16 @@ PATCH 支持 `location`、`clock`、`weather`，至少一项，每项为完整�
     "windSpeedKmh": 10
   },
   "daily": { "maxTemperature": 23, "minTemperature": 15 },
+  "hourly": [
+    {
+      "forecastAt": "2026-11-04T10:00:00.000Z",
+      "temperature": 19,
+      "weatherCode": 61,
+      "condition": "小雨",
+      "isDay": false,
+      "precipitationProbability": 70
+    }
+  ],
   "fetchedAt": "2026-11-04T09:00:00.000Z",
   "cache": { "hit": false, "stale": false }
 }
@@ -257,14 +297,67 @@ PATCH 支持 `location`、`clock`、`weather`，至少一项，每项为完整�
 
 天气坐标四舍五入到小数点后两位后提交上游，缓存十分钟；请求失败时最多回退到一小时内的旧值，并明确 `cache.stale: true`。完全不可用返回 503，界面显示“暂不可用”，不保留示例中的 22° 晴天冒充实况。
 
-天气 observedAt 与 fetchedAt 均为真实时间，不随手动时钟偏移而变化。显示 Open-Meteo 来源链接与实际更新时间。浏览器收到温度等数据后使用文本节点显示。
+天气的 `observedAt`、`fetchedAt` 和 `forecastAt` 都是 UTC 时间，不随手动时钟偏移而变化。逐小时数据来自同一次天气请求，包含接下来 16 小时内最多 16 条有效预报，支持跨午夜并按时间升序排列。温度使用 `temperatureUnit`。无可用预报时 `hourly` 为空数组，实况仍保留。浏览器按地点 `timeZone` 显示时间，隐藏已经过期的预报。
 
 ## 数据源与部署边界
 
-- 天气：[Open-Meteo 官方接口文档](https://open-meteo.com/en/docs)。城市搜索：[Geocoding API](https://open-meteo.com/en/docs/geocoding-api)。IP：[ipapi.co API](https://ipapi.co/api/)。浏览器定位：[MDN Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API)。
+- 天气与国际城市：[Open-Meteo 天气](https://open-meteo.com/en/docs)、[Geocoding API](https://open-meteo.com/en/docs/geocoding-api)。大陆城市与 IP 定位：[UAPI 行政区划](https://uapis.cn/docs/api-reference/get-misc-district)、[UAPI IP 定位](https://uapis.cn/docs/api-reference/get-network-myip)。浏览器定位：[MDN Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API)。
+- IP 接口估算请求出口的位置。请求经代理转发时，定位结果对应代理出口。若 IP 服务未提供时区，中国大陆使用 Asia/Shanghai，其他出口使用浏览器时区或 UTC。
 - 外部服务需要这台 Mac 能连接上述 HTTPS 域名；免费服务的额度、网络可达性与定位精度不由本项目保证，失败须走上述显式降级。
 - 此版本供受信任局域网个人测试，现有导航及共享组件数据不按账号鉴权。设备 Cookie 隔离不等于账号权限系统。公开部署前必须另行设计认证、TLS 与可信代理配置。
 
+
+## 组件包与本地扩展更新（0.9.7）
+
+在「设置 → 更新与组件」选择组件 JSON，确认预览后加入当前导航页。每个文件包含一张卡，最大 16 KiB。下面是一份完整的模板：
+
+```json
+{
+  "format": "launchdeck-widget",
+  "version": 1,
+  "size": "square",
+  "card": {
+    "type": "text",
+    "title": "今日提醒",
+    "text": "记得休息",
+    "icon": "note",
+    "palette": "teal",
+    "layout": "stacked"
+  }
+}
+```
+
+支持 `single`、`compact`、`square` 三档尺寸。旧包中的 `wide` 导入为 `square`。模板 `text` 接受最多 240 字符的 `text`，`clock` 与 `weather` 使用当前设备的时间或天气，`currency` 需要 `base` 与 `quote`。所有模板均填写标题（最多 60 字符）、内置图标（`note`、`clock`、`cloud`、`currency`、`sparkles`）、配色（`indigo`、`teal`、`amber`、`slate`、`rose`）和布局（`stacked` 或 `split`）。未知字段拒绝导入。文字按纯文本渲染。
+
+组件包通过浏览器本机解析。确认后仅按现有布局接口保存校验后的组件配置与位置。完整备份包含导入配置，导航专用备份只保留位置和尺寸，另一设备恢复时可重新导入原组件包。
+
+升级入口接受 LaunchDeck 构建器生成的 ZIP（最多 32 MiB），读取构建标记和清单并比较版本。可粘贴从发布方取得的 SHA-256 检查整个文件。验证后将可信 ZIP 解压覆盖原扩展目录，再通过浏览器扩展管理页重新加载。`GET /api/update/version` 返回网页版配套扩展版本。
+
+## GET /api/exchange-rate
+
+查询参数为 `base` 和 `quote`，支持固定的 12 种币种。返回 `{base, quote, rate, date, fetchedAt, cache: {hit, stale}}`，其中 `date` 是参考汇率日期，`fetchedAt` 是取得汇率的 UTC ISO 时间。相同币种即时返回汇率 1 和空日期。上游为 Frankfurter，服务缓存一小时，短暂故障时最多回退七天内的缓存。扩展授权范围为 `https://api.frankfurter.dev/*`。换算金额在浏览器内计算。 [Frankfurter 数据说明](https://frankfurter.dev/)
+
+## HTTPS JSON 通知订阅（0.9.3）
+
+在「设置 → API 接入」填写名称和 API 地址。来源返回 HTTP 2xx 和 JSON，内容不超过 128 KiB，`messages` 数组最多 100 项，例如：
+
+```json
+{
+  "messages": [
+    {
+      "id": "build-42",
+      "title": "构建完成",
+      "body": "版本 0.9.3 已通过检查",
+      "url": "https://example.com/builds/42",
+      "publishedAt": "2026-11-22T12:00:00Z"
+    }
+  ]
+}
+```
+
+`id`、`title`、`publishedAt` 必填。每个来源的 ID 应长期保持稳定，时间使用带时区的 ISO 8601。正文和 HTTPS 链接可省略。每个浏览器最多订阅 8 个来源，每个来源保留最新 40 条，并记录已读状态。
+
+打开或返回新标签页时尝试刷新，页面可见期间按一分钟更新。来源失败会保留上一次成功取得的消息。网页直接发起跨域请求，来源须通过 CORS 允许 LaunchDeck 的页面来源读取。扩展在添加时申请该来源域名的权限，在本地服务工作线程拉取。请求使用 HTTPS GET，省略 Cookie 和 Referrer，拒绝重定向。订阅和已读记录只在当前浏览器存储。
 
 ## 导航专用备份（0.8.0）
 
