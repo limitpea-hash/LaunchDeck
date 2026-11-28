@@ -1,0 +1,35 @@
+services:
+  launchdeck:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: launchdeck:0.10.10
+    container_name: ${LAUNCHDECK_CONTAINER_NAME:-launchdeck}
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${LAUNCHDECK_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      LISTEN_HOST: "0.0.0.0"
+      DATABASE_PATH: "/data/portal.sqlite"
+      TZ: "${TZ:-Asia/Shanghai}"
+      # 容器默认允许 localhost / 127.0.0.1 及容器内 IP 访问；
+      # 若通过宿主机局域网 IP 或域名访问，请填写允许的 Host（逗号分隔），例如：
+      # ALLOWED_HOSTS=192.168.1.50,nav.example.com
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-}"
+      # 若前方使用 Lucky / Nginx / Caddy 等反向代理提供 HTTPS，请设为 true 并配置 ALLOWED_HOSTS
+      TRUST_PROXY: "${TRUST_PROXY:-false}"
+    volumes:
+      - launchdeck_data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  launchdeck_data:

@@ -335,7 +335,15 @@ PATCH 支持 `location`、`clock`、`weather`，至少一项，每项为完整�
 
 ## GET /api/exchange-rate
 
-查询参数为 `base` 和 `quote`，支持固定的 12 种币种。返回 `{base, quote, rate, date, fetchedAt, cache: {hit, stale}}`，其中 `date` 是参考汇率日期，`fetchedAt` 是取得汇率的 UTC ISO 时间。相同币种即时返回汇率 1 和空日期。上游为 Frankfurter，服务缓存一小时，短暂故障时最多回退七天内的缓存。扩展授权范围为 `https://api.frankfurter.dev/*`。换算金额在浏览器内计算。 [Frankfurter 数据说明](https://frankfurter.dev/)
+查询参数 `base` 和 `quote` 接受项目核对的 Frankfurter v2 清单中的全部 158 种国家和地区货币代码，涵盖现行法定货币及清单保留的 `ANG` 等旧代码。接口拒绝加密货币、贵金属及 `XDR`、`CMD`、`CNH`。返回 `{base, quote, rate, date, fetchedAt, cache: {hit, stale}}`，其中 `date` 是参考汇率日期，`fetchedAt` 是取得汇率的 UTC ISO 时间。相同币种即时返回汇率 1 和空日期。服务最多缓存 128 对汇率，缓存一小时内有效，短暂故障时最多回退七天内的缓存。扩展授权范围为 `https://api.frankfurter.dev/*`。换算金额在浏览器内计算。 [Frankfurter 数据说明](https://frankfurter.dev/)
+
+Web 与扩展可共同导入 `backend/features/currencies.js` 中的冻结数据，在离线状态下按国家、地区、币种名称或别名选币。
+
+- `CURRENCY_CATALOG` 提供每个币种的 `{ code, name, symbol, country, countries, aliases, region, popular }`。目录先列 18 个热门币种，其余按代码升序排列。`country` 是主展示名称，`countries` 包含关联国家或地区，例如法国和德国均对应 `EUR`。
+- `POPULAR_CURRENCIES` 提供热门币种代码及其显示顺序。
+- `CURRENCY_REGIONS` 提供亚洲、欧洲、美洲、大洋洲、中东和非洲的 `{ id, label }`。
+- `getCurrencyMeta(code)` 按精确的大写代码返回冻结目录项，未知代码或非字符串参数返回 `null`。
+- `CURRENCIES` 继续提供代码到简体中文货币名的映射，原有前 12 项的顺序和名称保持兼容。
 
 ## HTTPS JSON 通知订阅（0.9.3）
 

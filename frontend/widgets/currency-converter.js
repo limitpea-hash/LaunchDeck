@@ -1,5 +1,16 @@
 import { el, clearElement, setText } from '../lib/dom.js';
-import { CURRENCIES } from '../platform/features/currencies.js';
+import { closeAllPopovers, registerPopover, unregisterPopover } from '../lib/ui/index.js';
+import * as currencyPlatform from '../platform/features/currencies.js';
+
+const CURRENCIES = currencyPlatform.CURRENCIES || Object.freeze({});
+const FALLBACK_REGIONS = Object.freeze([
+  Object.freeze({ id: 'asia', label: '亚洲' }),
+  Object.freeze({ id: 'europe', label: '欧洲' }),
+  Object.freeze({ id: 'americas', label: '美洲' }),
+  Object.freeze({ id: 'oceania', label: '大洋洲' }),
+  Object.freeze({ id: 'middle-east', label: '中东' }),
+  Object.freeze({ id: 'africa', label: '非洲' }),
+]);
 
 /* =====================================================================
  * Shared exchange-rate helper (also used by imported-card currency template)
@@ -18,7 +29,7 @@ const OFFLINE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 const ERROR_COOLDOWN_MS = 20 * 1000;
 const OUTDATED_DAYS = 4;
 const STORE_KEY = 'launchdeck_fx_rates_v1';
-const MAX_STORED = 40;
+const MAX_STORED = 80;
 const MAX_AMOUNT = 1e12;
 
 const memory = new Map(); // key -> entry
@@ -28,6 +39,75 @@ const listeners = new Set();
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const pad = (n) => String(n).padStart(2, '0');
+
+let cachedCatalog = null;
+let cachedCatalogMap = null;
+let cachedPopular = null;
+let cachedRegions = null;
+
+function buildNormalizedCatalog() {
+  if (cachedCatalog) return cachedCatalog;
+  const rawRegions = Array.isArray(currencyPlatform.CURRENCY_REGIONS) && currencyPlatform.CURRENCY_REGIONS.length > 0
+    ? currencyPlatform.CURRENCY_REGIONS
+    : FALLBACK_REGIONS;
+  cachedRegions = Object.freeze(rawRegions.map((r) => Object.freeze({
+    id: String(r.id || ''),
+    label: String(r.label || r.id || ''),
+  })).filter((r) => r.id));
+
+  const validRegionIds = new Set(cachedRegions.map((r) => r.id));
+  const popularCodes = Array.isArray(currencyPlatform.POPULAR_CURRENCIES) && currencyPlatform.POPULAR_CURRENCIES.length > 0
+    ? currencyPlatform.POPULAR_CURRENCIES.filter((c) => isSupportedCurrency(c))
+    : currencyCodes().slice(0, 12);
+  const popularSet = new Set(popularCodes);
+
+  const rawCatalog = Array.isArray(currencyPlatform.CURRENCY_CATALOG) && currencyPlatform.CURRENCY_CATALOG.length > 0
+    ? currencyPlatform.CURRENCY_CATALOG
+    : currencyCodes().map((code) => ({
+      code,
+      name: String(CURRENCIES[code] || code),
+      symbol: '',
+      country: String(CURRENCIES[code] || code),
+      countries: [String(CURRENCIES[code] || code)],
+      aliases: [],
+      region: 'asia',
+      popular: popularSet.has(code),
+    }));
+
+  const normalized = [];
+  const byCode = new Map();
+  for (const raw of rawCatalog) {
+    if (!raw || typeof raw !== 'object' || !isSupportedCurrency(raw.code) || byCode.has(raw.code)) continue;
+    const name = String(raw.name || CURRENCIES[raw.code] || raw.code);
+    const country = String(raw.country || name);
+    const countries = Array.isArray(raw.countries) && raw.countries.length > 0
+      ? raw.countries.map((c) => String(c).trim()).filter(Boolean)
+      : [country];
+    if (!countries.includes(country)) countries.unshift(country);
+    const aliases = Array.isArray(raw.aliases)
+      ? raw.aliases.map((a) => String(a).trim()).filter(Boolean)
+      : [];
+    const region = validRegionIds.has(raw.region) ? raw.region : cachedRegions[0]?.id || 'asia';
+    const entry = Object.freeze({
+      code: raw.code,
+      name,
+      symbol: typeof raw.symbol === 'string' ? raw.symbol : '',
+      country,
+      countries: Object.freeze(countries),
+      aliases: Object.freeze(aliases),
+      region,
+      popular: popularSet.has(raw.code) || raw.popular === true,
+    });
+    normalized.push(entry);
+    byCode.set(entry.code, entry);
+  }
+  cachedCatalog = Object.freeze(normalized);
+  cachedCatalogMap = byCode;
+  cachedPopular = Object.freeze(
+    popularCodes.map((code) => byCode.get(code)).filter(Boolean)
+  );
+  return cachedCatalog;
+}
 
 export function currencyCodes() {
   const src = CURRENCIES && typeof CURRENCIES === 'object' ? CURRENCIES : {};
@@ -40,6 +120,100 @@ export function isSupportedCurrency(code) {
 
 export function currencyName(code) {
   return isSupportedCurrency(code) ? String(CURRENCIES[code]) : String(code || '');
+}
+
+export function getCurrencyRegions() {
+  buildNormalizedCatalog();
+  return cachedRegions;
+}
+
+export function getCurrencyCatalog() {
+  return buildNormalizedCatalog();
+}
+
+export function getPopularCurrencies() {
+  buildNormalizedCatalog();
+  return cachedPopular;
+}
+
+export function getCurrencyMeta(code) {
+  buildNormalizedCatalog();
+  if (typeof code !== 'string') return null;
+  return cachedCatalogMap.get(code) || null;
+}
+
+export function currencyCountry(code) {
+  const meta = getCurrencyMeta(code);
+  return meta ? meta.country : currencyName(code);
+}
+
+function scoreCurrencyMatch(entry, q) {
+  const codeLower = entry.code.toLowerCase();
+  const nameLower = entry.name.toLowerCase();
+  const countryLower = entry.country.toLowerCase();
+
+  if (codeLower === q) return { score: 120, matchedCountry: null };
+  if (countryLower === q) return { score: 115, matchedCountry: entry.country };
+  for (const c of entry.countries) {
+    if (c.toLowerCase() === q) return { score: 110, matchedCountry: c };
+  }
+  if (nameLower === q) return { score: 105, matchedCountry: null };
+  if (codeLower.startsWith(q)) return { score: 95, matchedCountry: null };
+  if (countryLower.startsWith(q)) return { score: 90, matchedCountry: entry.country };
+  for (const c of entry.countries) {
+    if (c.toLowerCase().startsWith(q)) return { score: 88, matchedCountry: c };
+  }
+  if (countryLower.includes(q)) return { score: 82, matchedCountry: entry.country };
+  for (const c of entry.countries) {
+    if (c.toLowerCase().includes(q)) return { score: 80, matchedCountry: c };
+  }
+  if (nameLower.startsWith(q)) return { score: 78, matchedCountry: null };
+  if (nameLower.includes(q)) return { score: 74, matchedCountry: null };
+
+  let aliasScore = 0;
+  for (const a of entry.aliases) {
+    const al = a.toLowerCase();
+    if (al === q) aliasScore = Math.max(aliasScore, 72);
+    else if (al.startsWith(q)) aliasScore = Math.max(aliasScore, 66);
+    else if (al.includes(q)) aliasScore = Math.max(aliasScore, 55);
+  }
+  if (aliasScore > 0) return { score: aliasScore, matchedCountry: null };
+  if (entry.symbol && entry.symbol.toLowerCase() === q) return { score: 45, matchedCountry: null };
+  return null;
+}
+
+/**
+ * Search or filter the currency catalog by country/region name, currency name, aliases, or ISO code.
+ * Non-empty queries always search across all regions so users never hit false empty states.
+ */
+export function searchCurrencyCatalog(query = '', { region = 'all' } = {}) {
+  const catalog = buildNormalizedCatalog();
+  const q = String(query || '').trim().toLowerCase();
+
+  if (!q) {
+    if (region === 'popular') {
+      return getPopularCurrencies().map((entry) => ({ entry, matchedCountry: null, score: 100 }));
+    }
+    const list = region && region !== 'all'
+      ? catalog.filter((entry) => entry.region === region)
+      : catalog;
+    return list.map((entry) => ({ entry, matchedCountry: null, score: entry.popular ? 10 : 0 }));
+  }
+
+  const hits = [];
+  for (let idx = 0; idx < catalog.length; idx++) {
+    const entry = catalog[idx];
+    const match = scoreCurrencyMatch(entry, q);
+    if (match) {
+      hits.push({ entry, matchedCountry: match.matchedCountry, score: match.score, idx });
+    }
+  }
+  hits.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.entry.popular !== b.entry.popular) return a.entry.popular ? -1 : 1;
+    return a.idx - b.idx;
+  });
+  return hits.map(({ entry, matchedCountry, score }) => ({ entry, matchedCountry, score }));
 }
 
 export function normalizePair(raw) {
@@ -515,6 +689,9 @@ const FX_ICON_PATHS = {
   swap: ['M5 8.5h13', 'M14.5 5 18 8.5 14.5 12', 'M19 15.5H6', 'M9.5 12 6 15.5 9.5 19'],
   refresh: ['M19.5 12a7.5 7.5 0 1 1-2.2-5.3', 'M19.5 4.5v4h-4'],
   lock: ['M7 11V8a5 5 0 0 1 10 0v3', 'M6 11h12v9H6z'],
+  search: ['M11 4.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Z', 'M16 16l4 4'],
+  chevron: ['M6.5 9.5 12 15l5.5-5.5'],
+  close: ['M6 6l12 12', 'M18 6 6 18'],
 };
 
 export function createFxIcon(kind) {
@@ -535,6 +712,564 @@ export function createFxIcon(kind) {
 }
 
 /* =====================================================================
+ * Country & Popular Currency Picker (Portal Popover on document.body)
+ * ===================================================================== */
+
+let pickerUid = 1;
+
+function formatMultiCountryHint(entry) {
+  if (!entry || !Array.isArray(entry.countries) || entry.countries.length <= 1) return '';
+  const extras = entry.countries.filter((c) => c !== entry.country);
+  if (extras.length === 0) return '';
+  const preview = extras.slice(0, 4).join('、');
+  return extras.length > 4 ? `含 ${preview} 等 ${entry.countries.length} 地` : `含 ${preview}`;
+}
+
+function positionPickerPortal(triggerEl, portalEl) {
+  if (!triggerEl || !portalEl || typeof window === 'undefined') return;
+  const vw = window.innerWidth || 1280;
+  const vh = window.innerHeight || 800;
+  const margin = 8;
+
+  if (vw < 520) {
+    const width = Math.min(368, vw - margin * 2);
+    portalEl.style.width = `${Math.round(width)}px`;
+    const left = Math.max(margin, Math.round((vw - width) / 2));
+    portalEl.style.left = `${left}px`;
+    const portalRect = typeof portalEl.getBoundingClientRect === 'function'
+      ? portalEl.getBoundingClientRect()
+      : { height: 460 };
+    const maxH = Math.max(240, vh - margin * 2);
+    const ph = Math.min(portalRect.height || 460, maxH);
+    const rect = typeof triggerEl.getBoundingClientRect === 'function'
+      ? triggerEl.getBoundingClientRect()
+      : { top: 40, bottom: 80 };
+    let top = rect.bottom + 8;
+    if (top + ph > vh - margin) {
+      top = Math.max(margin, Math.round((vh - ph) / 2));
+    }
+    portalEl.style.top = `${Math.round(top)}px`;
+    return;
+  }
+
+  const width = Math.min(374, vw - margin * 2);
+  portalEl.style.width = `${Math.round(width)}px`;
+  const rect = typeof triggerEl.getBoundingClientRect === 'function'
+    ? triggerEl.getBoundingClientRect()
+    : { left: 16, top: 16, bottom: 56, width: 160, height: 40 };
+  const portalRect = typeof portalEl.getBoundingClientRect === 'function'
+    ? portalEl.getBoundingClientRect()
+    : { width, height: 420 };
+  const pw = portalRect.width || width;
+  const ph = portalRect.height || 420;
+
+  let left = rect.left;
+  if (left + pw > vw - margin) left = vw - pw - margin;
+  if (left < margin) left = margin;
+
+  let top = rect.bottom + 6;
+  if (top + ph > vh - margin && rect.top - ph - 6 >= margin) {
+    top = rect.top - ph - 6;
+  } else if (top + ph > vh - margin) {
+    top = Math.max(margin, vh - ph - margin);
+  }
+
+  portalEl.style.left = `${Math.round(left)}px`;
+  portalEl.style.top = `${Math.round(top)}px`;
+}
+
+export function createCurrencyPicker({
+  value = DEFAULT_PAIR.base,
+  roleLabel = '源货币',
+  title = '选择国家 / 货币',
+  compact = false,
+  getDisabled = null,
+  onSelect = null,
+} = {}) {
+  const listboxId = `fx_picker_list_${pickerUid++}`;
+  let currentCode = isSupportedCurrency(value) ? value : DEFAULT_PAIR.base;
+  let isOpen = false;
+  let activeRegion = 'all';
+  let queryText = '';
+  let activeIndex = -1;
+  let visibleEntries = [];
+  let portalEl = null;
+  let searchInput = null;
+  let clearSearchBtn = null;
+  let hotSection = null;
+  let regionBar = null;
+  let listEl = null;
+
+  const countrySpan = el('span', { className: 'fx-picker-country' });
+  const primarySpan = el('span', { className: compact ? 'fx-picker-code' : 'fx-picker-sub' });
+  const chevronSpan = el('span', { className: 'fx-picker-chevron', 'aria-hidden': 'true' }, createFxIcon('chevron'));
+
+  const triggerBtn = el(
+    'button',
+    {
+      type: 'button',
+      className: `fx-picker-btn fx-control ${compact ? 'is-compact' : 'is-detail'}`,
+      role: 'combobox',
+      'aria-haspopup': 'dialog',
+      'aria-expanded': 'false',
+      'aria-controls': listboxId,
+    },
+    el('span', { className: 'fx-picker-btn-text' }, countrySpan, primarySpan),
+    chevronSpan
+  );
+
+  function syncTrigger() {
+    const meta = getCurrencyMeta(currentCode);
+    const country = meta ? meta.country : currentCode;
+    const name = meta ? meta.name : currencyName(currentCode);
+    setText(countrySpan, country);
+    setText(primarySpan, compact ? currentCode : `${name} · ${currentCode}`);
+    triggerBtn.dataset.currencyCode = currentCode;
+    triggerBtn.title = `${country} · ${name} (${currentCode})`;
+    triggerBtn.setAttribute('aria-label', `${roleLabel}：${country} ${name}（${currentCode}）`);
+  }
+
+  function selectCode(nextCode) {
+    if (!isSupportedCurrency(nextCode)) return;
+    const changed = nextCode !== currentCode;
+    currentCode = nextCode;
+    syncTrigger();
+    close({ restoreFocus: true });
+    if (changed) {
+      onSelect?.(nextCode);
+    }
+  }
+
+  function createOptionRow(entry, matchedCountry, flatIdx) {
+    const isSelected = entry.code === currentCode;
+    const isActive = flatIdx === activeIndex;
+    const showMatched = matchedCountry && matchedCountry !== entry.country;
+
+    const primaryChildren = [];
+    if (showMatched) {
+      primaryChildren.push(el('span', { className: 'fx-picker-item-country', textContent: matchedCountry }));
+      primaryChildren.push(el('span', { className: 'fx-picker-item-via', textContent: entry.country }));
+    } else {
+      primaryChildren.push(el('span', { className: 'fx-picker-item-country', textContent: entry.country }));
+    }
+    if (entry.popular) {
+      primaryChildren.push(el('span', { className: 'fx-picker-item-hot-tag', textContent: '热门' }));
+    }
+
+    const extraCountries = showMatched ? '' : formatMultiCountryHint(entry);
+    const subNodes = [entry.name];
+    if (entry.symbol) {
+      subNodes.push(' · ', el('bdi', { className: 'fx-picker-item-symbol', textContent: entry.symbol }));
+    }
+    if (extraCountries) {
+      subNodes.push(` · ${extraCountries}`);
+    }
+
+    const optBtn = el(
+      'button',
+      {
+        type: 'button',
+        role: 'option',
+        className: `fx-picker-item ${isActive ? 'is-active' : ''} ${isSelected ? 'is-selected' : ''}`,
+        'aria-selected': String(isSelected),
+        dataset: { code: entry.code, index: String(flatIdx) },
+      },
+      el(
+        'span',
+        { className: 'fx-picker-item-main' },
+        el('span', { className: 'fx-picker-item-top' }, ...primaryChildren),
+        el('span', { className: 'fx-picker-item-sub' }, ...subNodes)
+      ),
+      el(
+        'span',
+        { className: 'fx-picker-item-right' },
+        el('span', { className: 'fx-picker-item-code', textContent: entry.code }),
+        isSelected ? el('span', { className: 'fx-picker-item-check', 'aria-hidden': 'true', textContent: '✓' }) : null
+      )
+    );
+
+    optBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectCode(entry.code);
+    });
+    return optBtn;
+  }
+
+  function renderHotSection() {
+    if (!hotSection) return;
+    const searching = queryText.trim().length > 0;
+    hotSection.hidden = searching;
+    if (searching) return;
+
+    const chipsWrap = hotSection.querySelector('.fx-picker-hot-grid');
+    if (!chipsWrap) return;
+    clearElement(chipsWrap);
+    for (const entry of getPopularCurrencies()) {
+      const isSelected = entry.code === currentCode;
+      const chip = el(
+        'button',
+        {
+          type: 'button',
+          className: `fx-hot-chip ${isSelected ? 'is-selected' : ''}`,
+          'aria-pressed': String(isSelected),
+          dataset: { code: entry.code },
+          title: `${entry.country} · ${entry.name} (${entry.code})`,
+        },
+        el('span', { className: 'fx-hot-chip-country', textContent: entry.country }),
+        el('span', { className: 'fx-hot-chip-code', textContent: entry.code })
+      );
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectCode(entry.code);
+      });
+      chipsWrap.appendChild(chip);
+    }
+  }
+
+  function renderRegionTabs() {
+    if (!regionBar) return;
+    const searching = queryText.trim().length > 0;
+    regionBar.hidden = searching;
+    if (searching) return;
+
+    clearElement(regionBar);
+    const tabs = [{ id: 'all', label: '全部' }, ...getCurrencyRegions()];
+    for (const tab of tabs) {
+      const active = activeRegion === tab.id;
+      const btn = el('button', {
+        type: 'button',
+        role: 'tab',
+        className: `fx-region-tab ${active ? 'is-active' : ''}`,
+        'aria-selected': String(active),
+        dataset: { region: tab.id },
+        textContent: tab.label,
+      });
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (activeRegion === tab.id) return;
+        activeRegion = tab.id;
+        activeIndex = 0;
+        renderRegionTabs();
+        renderList();
+      });
+      regionBar.appendChild(btn);
+    }
+  }
+
+  function syncActiveVisual({ scroll = false } = {}) {
+    if (!listEl) return;
+    const buttons = listEl.querySelectorAll('.fx-picker-item');
+    buttons.forEach((btn, idx) => {
+      const active = idx === activeIndex;
+      btn.classList.toggle('is-active', active);
+      if (active && scroll && typeof btn.scrollIntoView === 'function') {
+        btn.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
+  function renderList() {
+    if (!listEl) return;
+    clearElement(listEl);
+    const trimmed = queryText.trim();
+    const results = searchCurrencyCatalog(trimmed, { region: activeRegion });
+    visibleEntries = results.map((r) => r.entry);
+
+    if (results.length === 0) {
+      activeIndex = -1;
+      listEl.appendChild(
+        el('div', {
+          className: 'fx-picker-empty',
+          textContent: '未找到匹配的国家或货币，试试输入国家中文名、英文名或 3 位代码',
+        })
+      );
+      return;
+    }
+
+    if (activeIndex < 0 || activeIndex >= results.length) {
+      const selIdx = results.findIndex((r) => r.entry.code === currentCode);
+      activeIndex = trimmed ? 0 : (selIdx >= 0 ? selIdx : 0);
+    }
+
+    if (!trimmed && activeRegion === 'all') {
+      const regions = getCurrencyRegions();
+      const grouped = new Map(regions.map((r) => [r.id, []]));
+      for (const item of results) {
+        const bucket = grouped.get(item.entry.region);
+        if (bucket) bucket.push(item);
+      }
+      let flatIdx = 0;
+      const orderedEntries = [];
+      for (const region of regions) {
+        const items = grouped.get(region.id) || [];
+        if (items.length === 0) continue;
+        listEl.appendChild(
+          el(
+            'div',
+            { className: 'fx-picker-group-label', role: 'presentation' },
+            el('span', { textContent: region.label }),
+            el('span', { className: 'fx-picker-group-count', textContent: `${items.length}` })
+          )
+        );
+        for (const item of items) {
+          orderedEntries.push(item.entry);
+          listEl.appendChild(createOptionRow(item.entry, item.matchedCountry, flatIdx));
+          flatIdx += 1;
+        }
+      }
+      visibleEntries = orderedEntries;
+      if (activeIndex >= visibleEntries.length) activeIndex = 0;
+      syncActiveVisual();
+      return;
+    }
+
+    results.forEach((item, idx) => {
+      listEl.appendChild(createOptionRow(item.entry, item.matchedCountry, idx));
+    });
+  }
+
+  function onDocPointerDown(e) {
+    if (!isOpen) return;
+    if (triggerBtn.contains(e.target) || (portalEl && portalEl.contains(e.target))) return;
+    close({ restoreFocus: false });
+  }
+
+  function onWindowReposition() {
+    if (isOpen && portalEl) {
+      positionPickerPortal(triggerBtn, portalEl);
+    }
+  }
+
+  function onKeyDown(e) {
+    if (!isOpen) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        open();
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      close({ restoreFocus: true });
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (visibleEntries.length > 0) {
+        activeIndex = (activeIndex + 1) % visibleEntries.length;
+        syncActiveVisual({ scroll: true });
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (visibleEntries.length > 0) {
+        activeIndex = (activeIndex - 1 + visibleEntries.length) % visibleEntries.length;
+        syncActiveVisual({ scroll: true });
+      }
+    } else if (e.key === 'Home') {
+      if (document.activeElement === searchInput && queryText) return;
+      e.preventDefault();
+      if (visibleEntries.length > 0) {
+        activeIndex = 0;
+        syncActiveVisual({ scroll: true });
+      }
+    } else if (e.key === 'End') {
+      if (document.activeElement === searchInput && queryText) return;
+      e.preventDefault();
+      if (visibleEntries.length > 0) {
+        activeIndex = visibleEntries.length - 1;
+        syncActiveVisual({ scroll: true });
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (visibleEntries.length > 0 && activeIndex >= 0 && activeIndex < visibleEntries.length) {
+        selectCode(visibleEntries[activeIndex].code);
+      }
+    }
+  }
+
+  const instance = {
+    button: triggerBtn,
+    open,
+    close,
+    isOpen: () => isOpen,
+    getValue: () => currentCode,
+    setValue(nextCode) {
+      if (!isSupportedCurrency(nextCode)) return;
+      currentCode = nextCode;
+      syncTrigger();
+      if (isOpen) {
+        renderHotSection();
+        renderList();
+      }
+    },
+    destroy() {
+      close({ restoreFocus: false });
+      triggerBtn.removeEventListener('click', onTriggerClick);
+      triggerBtn.removeEventListener('keydown', onKeyDown);
+    },
+  };
+
+  function open() {
+    if (isOpen || triggerBtn.disabled || getDisabled?.()) return;
+    closeAllPopovers(instance);
+    isOpen = true;
+    activeRegion = 'all';
+    queryText = '';
+    activeIndex = -1;
+    registerPopover(instance);
+    triggerBtn.setAttribute('aria-expanded', 'true');
+
+    const closeBtn = el(
+      'button',
+      { type: 'button', className: 'fx-picker-close', 'aria-label': '关闭货币选择器', title: '关闭' },
+      createFxIcon('close')
+    );
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      close({ restoreFocus: true });
+    });
+
+    const headerEl = el(
+      'div',
+      { className: 'fx-picker-head' },
+      el(
+        'div',
+        { className: 'fx-picker-head-meta' },
+        el('span', { className: 'fx-picker-title', textContent: title }),
+        el('span', { className: 'fx-picker-count', textContent: `${getCurrencyCatalog().length} 个国家/地区货币` })
+      ),
+      closeBtn
+    );
+
+    searchInput = el('input', {
+      type: 'text',
+      className: 'fx-picker-search',
+      placeholder: '搜索国家、地区或货币（如 法国、泰国、USD）',
+      autocomplete: 'off',
+      spellcheck: 'false',
+      'aria-label': '按国家或货币名称搜索',
+    });
+
+    clearSearchBtn = el(
+      'button',
+      { type: 'button', className: 'fx-picker-search-clear', hidden: true, 'aria-label': '清空搜索' },
+      createFxIcon('close')
+    );
+
+    const onSearchChange = () => {
+      queryText = searchInput.value;
+      clearSearchBtn.hidden = !queryText;
+      activeIndex = 0;
+      renderHotSection();
+      renderRegionTabs();
+      renderList();
+    };
+    searchInput.addEventListener('input', onSearchChange);
+    searchInput.addEventListener('keydown', onKeyDown);
+    clearSearchBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      searchInput.value = '';
+      onSearchChange();
+      searchInput.focus?.();
+    });
+
+    const searchWrap = el(
+      'div',
+      { className: 'fx-picker-search-wrap' },
+      el('span', { className: 'fx-picker-search-icon', 'aria-hidden': 'true' }, createFxIcon('search')),
+      searchInput,
+      clearSearchBtn
+    );
+
+    hotSection = el(
+      'div',
+      { className: 'fx-picker-hot' },
+      el(
+        'div',
+        { className: 'fx-picker-section-head' },
+        el('span', { textContent: '热门货币' }),
+        el('span', { className: 'fx-picker-section-hint', textContent: '一键快选' })
+      ),
+      el('div', { className: 'fx-picker-hot-grid' })
+    );
+
+    regionBar = el('div', { className: 'fx-picker-regions', role: 'tablist', 'aria-label': '按地区筛选国家货币' });
+    listEl = el('div', { className: 'fx-picker-list', id: listboxId, role: 'listbox', 'aria-label': title });
+
+    portalEl = el(
+      'div',
+      {
+        className: 'ui-popover-portal fx-picker-popover',
+        role: 'dialog',
+        'aria-label': title,
+      },
+      headerEl,
+      searchWrap,
+      hotSection,
+      regionBar,
+      listEl
+    );
+
+    portalEl.addEventListener('pointerdown', (e) => e.stopPropagation());
+    portalEl.addEventListener('click', (e) => e.stopPropagation());
+    portalEl.addEventListener('keydown', onKeyDown);
+
+    document.body?.appendChild(portalEl);
+    renderHotSection();
+    renderRegionTabs();
+    renderList();
+    positionPickerPortal(triggerBtn, portalEl);
+
+    document.addEventListener('pointerdown', onDocPointerDown, true);
+    window.addEventListener?.('resize', onWindowReposition);
+
+    if (typeof window === 'undefined' || (window.innerWidth || 1280) >= 640) {
+      searchInput.focus?.();
+    }
+  }
+
+  function close({ restoreFocus = false } = {}) {
+    if (!isOpen) return;
+    isOpen = false;
+    unregisterPopover(instance);
+    triggerBtn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', onDocPointerDown, true);
+    window.removeEventListener?.('resize', onWindowReposition);
+    if (portalEl) {
+      portalEl.remove();
+      portalEl = null;
+    }
+    searchInput = null;
+    clearSearchBtn = null;
+    hotSection = null;
+    regionBar = null;
+    listEl = null;
+    visibleEntries = [];
+    if (restoreFocus) {
+      triggerBtn.focus?.();
+    }
+  }
+
+  function onTriggerClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isOpen) close({ restoreFocus: true });
+    else open();
+  }
+
+  triggerBtn.addEventListener('click', onTriggerClick);
+  triggerBtn.addEventListener('keydown', onKeyDown);
+  syncTrigger();
+
+  return instance;
+}
+
+/* =====================================================================
  * currency-converter widget
  * ===================================================================== */
 
@@ -546,17 +1281,6 @@ function readConfig(context) {
     // ignore
   }
   return context.config && typeof context.config === 'object' ? context.config : {};
-}
-
-function fillSelect(select, selected, withNames) {
-  clearElement(select);
-  for (const code of currencyCodes()) {
-    const name = currencyName(code);
-    const opt = el('option', { value: code, textContent: withNames ? `${code} · ${name}` : code, title: name });
-    if (code === selected) opt.selected = true;
-    select.appendChild(opt);
-  }
-  select.value = selected;
 }
 
 export function mount(root, context = {}) {
@@ -578,6 +1302,7 @@ export function mount(root, context = {}) {
   let saveIsError = false;
   let permissionText = '';
   let permissionBusy = false;
+  let isSummaryLocked = false;
   const disposers = [];
 
   /* ----- summary: head + glance (1x1 / 2x1) + live form (2x2) ----- */
@@ -602,15 +1327,27 @@ export function mount(root, context = {}) {
     gConv, gMeta, gSr);
 
   function buildControls(variant) {
-    const full = variant === 'detail';
+    const isDetail = variant === 'detail';
     const amount = el('input', {
       type: 'text', inputmode: 'decimal', className: 'fx-amount fx-control', autocomplete: 'off',
       spellcheck: 'false', maxlength: '28', value: amountText, enterkeyhint: 'done', name: 'amount',
     });
-    const baseSel = el('select', { className: 'fx-select fx-control', name: 'base', 'aria-label': '源币种' });
-    const quoteSel = el('select', { className: 'fx-select fx-control', name: 'quote', 'aria-label': '目标币种' });
-    fillSelect(baseSel, pair.base, full);
-    fillSelect(quoteSel, pair.quote, full);
+    const basePicker = createCurrencyPicker({
+      value: pair.base,
+      roleLabel: '源货币',
+      title: '选择源国家 / 货币',
+      compact: !isDetail,
+      getDisabled: () => !isDetail && isSummaryLocked,
+      onSelect: (nextBase) => applyPair({ base: nextBase, quote: pair.quote }),
+    });
+    const quotePicker = createCurrencyPicker({
+      value: pair.quote,
+      roleLabel: '目标货币',
+      title: '选择目标国家 / 货币',
+      compact: !isDetail,
+      getDisabled: () => !isDetail && isSummaryLocked,
+      onSelect: (nextQuote) => applyPair({ base: pair.base, quote: nextQuote }),
+    });
     const swap = el('button', { type: 'button', className: 'fx-swap fx-control', 'aria-label': '互换币种', title: '互换币种' }, createFxIcon('swap'));
     const resultValue = el('output', { className: 'fx-result-value', 'aria-live': 'polite' });
     const resultCode = el('span', { className: 'fx-result-code' });
@@ -621,15 +1358,19 @@ export function mount(root, context = {}) {
       el('label', { className: 'fx-field fx-field-amount' },
         el('span', { className: 'fx-field-label', textContent: '金额' }), amount),
       el('div', { className: 'fx-pair-row' },
-        el('label', { className: 'fx-field' }, el('span', { className: 'fx-field-label', textContent: '从' }), baseSel),
+        el('div', { className: 'fx-field' }, el('span', { className: 'fx-field-label', textContent: '从' }), basePicker.button),
         swap,
-        el('label', { className: 'fx-field' }, el('span', { className: 'fx-field-label', textContent: '换成' }), quoteSel)),
+        el('div', { className: 'fx-field' }, el('span', { className: 'fx-field-label', textContent: '换成' }), quotePicker.button)),
       el('div', { className: 'fx-result' },
         el('div', { className: 'fx-result-main' }, resultValue, resultCode),
         rateLine, feedback),
       permBtn);
     disposers.push(guardInteractive(form));
-    return { variant, form, amount, baseSel, quoteSel, swap, resultValue, resultCode, rateLine, feedback, permBtn };
+    return {
+      variant, form, amount, basePicker, quotePicker,
+      baseSel: basePicker.button, quoteSel: quotePicker.button,
+      swap, resultValue, resultCode, rateLine, feedback, permBtn,
+    };
   }
 
   const live = buildControls('summary');
@@ -649,7 +1390,7 @@ export function mount(root, context = {}) {
       el('span', { className: 'fx-badge is-large', 'aria-hidden': 'true' }, createFxIcon('currency')),
       el('div', { className: 'fx-d-titles' },
         el('div', { className: 'fx-d-title', textContent: '汇率换算' }),
-        el('div', { className: 'fx-d-sub', textContent: '参考汇率 · 金额仅在本机计算，不会上传或保存' }))),
+        el('div', { className: 'fx-d-sub', textContent: '按国家/地区快选全球货币 · 金额仅在本机计算，不会上传或保存' }))),
     full.form, facts, note, saveNote, actions);
 
   root.append(summary, detail);
@@ -681,7 +1422,7 @@ export function mount(root, context = {}) {
     for (const c of controlSets) {
       setText(c.resultValue, value);
       setText(c.resultCode, pair.quote);
-      c.resultValue.setAttribute('aria-label', parsed.ok && view ? `${parsed.value} ${pair.base} 约合 ${value} ${pair.quote}` : fb || value);
+      c.resultValue.setAttribute('aria-label', parsed.ok && view ? `${parsed.value} ${currencyCountry(pair.base)} ${currencyName(pair.base)} 约合 ${value} ${currencyCountry(pair.quote)} ${currencyName(pair.quote)}` : fb || value);
       setText(c.rateLine, rateText);
       c.rateLine.hidden = !rateText || (fbErr && c.variant === 'summary');
       setText(c.feedback, fb);
@@ -703,6 +1444,8 @@ export function mount(root, context = {}) {
   function renderFacts(status) {
     clearElement(facts);
     const rows = [];
+    rows.push(['国家/地区', `${currencyCountry(pair.base)} → ${currencyCountry(pair.quote)}`]);
+    rows.push(['币种', `${currencyName(pair.base)} (${pair.base}) → ${currencyName(pair.quote)} (${pair.quote})`]);
     if (view) {
       rows.push(['汇率', `1 ${pair.base} = ${formatRate(view.rate)} ${pair.quote}`]);
       rows.push(['反向', `1 ${pair.quote} = ${formatRate(1 / view.rate)} ${pair.base}`]);
@@ -714,7 +1457,6 @@ export function mount(root, context = {}) {
     } else {
       rows.push(['状态', status.short]);
     }
-    rows.push(['币对', `${currencyName(pair.base)} → ${currencyName(pair.quote)}`]);
     for (const [k, v] of rows) {
       if (!v) continue;
       facts.append(el('div', { className: 'fx-fact' }, el('dt', { textContent: k }), el('dd', { textContent: v })));
@@ -728,20 +1470,20 @@ export function mount(root, context = {}) {
     const rateText = view ? formatRate(view.rate) : status.state === 'loading' ? '…' : '—';
     root.dataset.fxRateLen = rateText.length <= 5 ? 's' : rateText.length <= 7 ? 'm' : 'l';
     setText(headPair, `${pair.base}/${pair.quote}`);
-    setText(gPair, `${pair.base} → ${pair.quote}`);
+    setText(gPair, `${currencyCountry(pair.base)} ${pair.base} → ${currencyCountry(pair.quote)} ${pair.quote}`);
     setText(gCaption, `1 ${pair.base} =`);
     setText(gRate, rateText);
     setText(gUnit, pair.quote);
     setText(gMetaShort, status.short);
     setText(gMetaLong, status.state === 'error' ? status.short : status.long.split(' · ').slice(0, 2).join(' · '));
     const sr = view
-      ? `汇率 ${pair.base} 兑 ${pair.quote}：1 ${pair.base} = ${formatRate(view.rate)} ${pair.quote}，${status.long}`
-      : `汇率 ${pair.base} 兑 ${pair.quote}：${status.long}`;
+      ? `汇率 ${currencyCountry(pair.base)} ${pair.base} 兑 ${currencyCountry(pair.quote)} ${pair.quote}：1 ${pair.base} = ${formatRate(view.rate)} ${pair.quote}，${status.long}`
+      : `汇率 ${currencyCountry(pair.base)} ${pair.base} 兑 ${currencyCountry(pair.quote)} ${pair.quote}：${status.long}`;
     setText(gSr, sr);
     summary.title = sr;
     for (const c of controlSets) {
-      if (c.baseSel.value !== pair.base) c.baseSel.value = pair.base;
-      if (c.quoteSel.value !== pair.quote) c.quoteSel.value = pair.quote;
+      if (c.basePicker.getValue() !== pair.base) c.basePicker.setValue(pair.base);
+      if (c.quotePicker.getValue() !== pair.quote) c.quotePicker.setValue(pair.quote);
     }
     renderResults();
     renderFacts(status);
@@ -849,11 +1591,6 @@ export function mount(root, context = {}) {
     for (const c of controlSets) if (c.amount !== e.currentTarget) c.amount.value = amountText;
     renderResults();
   };
-  const onSelect = (e) => {
-    const c = controlSets.find((x) => x.form.contains(e.currentTarget));
-    if (!c) return;
-    applyPair({ base: c.baseSel.value, quote: c.quoteSel.value });
-  };
   const onSwap = () => applyPair({ base: pair.quote, quote: pair.base }, { delay: 0 });
   const onSubmit = (e) => {
     e.preventDefault();
@@ -890,8 +1627,6 @@ export function mount(root, context = {}) {
 
   for (const c of controlSets) {
     c.amount.addEventListener('input', onAmountInput);
-    c.baseSel.addEventListener('change', onSelect);
-    c.quoteSel.addEventListener('change', onSelect);
     c.swap.addEventListener('click', onSwap);
     c.form.addEventListener('submit', onSubmit);
     c.permBtn.addEventListener('click', onPermission);
@@ -901,7 +1636,12 @@ export function mount(root, context = {}) {
   /* ----- edit lock: summary controls are inert while jiggling ----- */
   const summaryControls = [live.amount, live.baseSel, live.quoteSel, live.swap, live.permBtn];
   const lock = watchEditLock(root, context, (locked) => {
+    isSummaryLocked = locked;
     root.dataset.controlsLocked = locked ? 'true' : 'false';
+    if (locked) {
+      live.basePicker.close({ restoreFocus: false });
+      live.quotePicker.close({ restoreFocus: false });
+    }
     for (const c of summaryControls) {
       c.disabled = locked || (c === live.permBtn && permissionBusy);
       if (locked) c.setAttribute('tabindex', '-1');
@@ -962,8 +1702,8 @@ export function mount(root, context = {}) {
       lock.disconnect();
       for (const c of controlSets) {
         c.amount.removeEventListener('input', onAmountInput);
-        c.baseSel.removeEventListener('change', onSelect);
-        c.quoteSel.removeEventListener('change', onSelect);
+        c.basePicker.destroy();
+        c.quotePicker.destroy();
         c.swap.removeEventListener('click', onSwap);
         c.form.removeEventListener('submit', onSubmit);
         c.permBtn.removeEventListener('click', onPermission);

@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.10.10 (2026-11-28)
+
+发布页：[v0.10.10 Release](https://github.com/limitpea-hash/LaunchDeck/releases/tag/v0.10.10) · 下载扩展包：[LaunchDeck-v0.10.10.zip](https://github.com/limitpea-hash/LaunchDeck/releases/download/v0.10.10/LaunchDeck-v0.10.10.zip)
+
+### 本次更新（v0.10.10）
+
+- **汇率换算支持按国家/地区选币与热门货币分类** 货币目录从 12 种扩展至 Frankfurter v2 实测支持的全部 158 种真实国家/地区法定货币（排除加密货币与贵金属，不新增扩展联网权限）。将卡片与详情页的原生下拉框升级为 iOS 18 悬浮国家/货币选择弹层，内置 18 个热门货币一键快选、6 大洲/地区筛选与分组浏览，并支持按中英文国家名、拼音、俗称、货币名或 3 位代码即时搜索（如搜索「法国」「德国」可直接匹配并标注对应欧元 `EUR`）。服务端汇率缓存上限提升至 128 对，前端本地缓存上限提升至 80 对。
+- **新增 Docker & Docker Compose 一键部署** 提供基于 `node:24-alpine` 的 [Dockerfile](Dockerfile)、[docker-compose.yml](docker-compose.yml) 与 [.env.example](.env.example)，内置非 root 运行、健康检查与 SQLite 持久化卷。后端新增可选 `ALLOWED_HOSTS`（逗号分隔局域网 IP / 域名白名单）与 `TRUST_PROXY`（配合反向代理 HTTPS 来源校验）环境变量，默认安全边界不变。
+
+### 安装与覆盖升级
+
+- **浏览器扩展首次安装** 下载并解压 [LaunchDeck-v0.10.10.zip](https://github.com/limitpea-hash/LaunchDeck/releases/download/v0.10.10/LaunchDeck-v0.10.10.zip) 到本地固定目录，在 `chrome://extensions/` 或 `edge://extensions/` 开启开发者模式，点击「加载已解压的扩展程序」选择包含 `manifest.json` 的目录。
+- **浏览器扩展覆盖升级** 先在扩展「设置 → 数据同步 → 本地数据备份」导出完整备份，将 `LaunchDeck-v0.10.10.zip` 解压覆盖到原加载目录（切勿卸载旧扩展），在扩展管理页点击「重新加载」并刷新新标签页。
+- **Docker Compose 部署** 在项目根目录执行 `docker compose up -d --build` 即可启动网页服务；需局域网 IP 或反代域名访问时在 `.env` 中配置 `ALLOWED_HOSTS` 与 `TRUST_PROXY=true`。
+
+### 验证说明
+
+- 自动化测试套件 **210 项全部通过**（含 158 币种目录冻结/多国映射/缓存淘汰及 `ALLOWED_HOSTS`/`TRUST_PROXY` 专项测试）。
+- `LaunchDeck-v0.10.10.zip` 已通过 ZIP 结构完整性、SHA-256 与相对 `0.10.9` 的升级校验。
+- Docker Compose 镜像 `launchdeck:0.10.10`（`node:24-alpine`）已实测健康检查、实时汇率拉取、HTTPS 反代同源写入、`Secure` Cookie、非法 Host/Origin 拦截及容器重启后 SQLite 持久化。
+- 无头 Chrome 已完成桌面 `1440px`（浅色与夜间模式）及窄屏 `375px` / `320px` 视觉与交互验收（未包含 Windows 实体机与触屏手机真机回归）。
+
+---
+
 ## v0.10.9 (2026-11-23)
 
 发布页：[v0.10.9 Release](https://github.com/limitpea-hash/LaunchDeck/releases/tag/v0.10.9) · 下载扩展包：[LaunchDeck-v0.10.9.zip](https://github.com/limitpea-hash/LaunchDeck/releases/download/v0.10.9/LaunchDeck-v0.10.9.zip)

@@ -5,14 +5,95 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { request as httpRequest } from 'node:http';
+import { Readable } from 'node:stream';
 import { createApp } from './app.js';
 import { validatePatch } from './validation.js';
 import { resolveFrontendRoot } from './paths.js';
-import { getLocalIPv4Addresses } from './network.js';
+import { getAllowedHosts, getLocalIPv4Addresses, parseAllowedHosts } from './network.js';
 
 const prefs = { iconMode: 'light', iconSize: 'small', wallpaper: 'ios18-bloom', wallpaperDimmed: false, tintHue: 215, tintSat: 82, focusActive: false };
 const site = { id: 'demo', title: '示例', url: 'https://example.com', category: 'dev', pinned: false, gradient: 'linear-gradient(180deg, #007aff 0%, #1c1c1e 140%)', accent: '#007aff', keywords: '示例' };
 const initial = { sites: [site], prefs, note: '第一条便签' };
+
+function appRequest(t, options) {
+  const server = createApp({ root: resolveFrontendRoot, databasePath: ':memory:', ...options });
+  t.after(() => server.close());
+  const [handleRequest] = server.listeners('request');
+
+  return async (url, { method = 'GET', headers = {}, body } = {}) => {
+    const req = Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]);
+    Object.assign(req, { method, url, headers, socket: {} });
+    const response = { headers: new Headers() };
+    await handleRequest(req, {
+      setHeader(name, value) { response.headers.set(name, value); },
+      writeHead(status, headers) {
+        response.status = status;
+        for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);
+      },
+      end(data) { response.body = JSON.parse(data); },
+    });
+    return response;
+  };
+}
+
+test('parses and deduplicates allowed hosts from comma and whitespace separated entries', () => {
+  assert.deepEqual(parseAllowedHosts(), []);
+  assert.deepEqual(parseAllowedHosts(' \t\n'), []);
+  assert.deepEqual(parseAllowedHosts(' NAV.Example.COM, 192.168.1.50\t[FD00:0::1]\nnav.example.com, [fd00::1] '),
+    ['nav.example.com', '192.168.1.50', '[fd00::1]']);
+  assert.deepEqual(getAllowedHosts('LOCALHOST, nav.example.com'), [...new Set([
+    'localhost', '127.0.0.1', '[::1]', '0.0.0.0', ...getLocalIPv4Addresses(), 'nav.example.com',
+  ])]);
+});
+
+test('rejects malformed allowed hosts and entries with URL components', () => {
+  for (const host of ['*', '*.example.com', 'http://example.com', 'example.com:3000', 'example.com:80',
+    'example.com:', 'example.com/a', 'example.com/', 'example.com\\a', 'user:secret@example.com',
+    'example.com?', 'example.com#', 'example..com', '-example.com', 'bad_name.example',
+    '192.168.1', '192.168.1.256', 'fd00::1', '[fd00::1]:80', '[fd00::1]/[x]']) {
+    assert.throws(() => parseAllowedHosts(`nav.example.com, ${host}`), /ALLOWED_HOSTS.*无效/, host);
+  }
+});
+
+test('ignores forwarded HTTPS when proxy trust is disabled and rejects hosts outside the allowlist', async t => {
+  const send = appRequest(t, { allowedHosts: ['nav.example.com', '192.168.1.50'], trustProxy: false });
+  const headers = { host: 'nav.example.com', 'x-forwarded-proto': 'https' };
+  assert.equal((await send('/api/state', { headers: { ...headers, origin: 'https://nav.example.com' } })).status, 403);
+  assert.equal((await send('/api/state', { headers: { ...headers, host: 'unknown.example' } })).status, 403);
+  const device = await send('/api/device/settings', { headers: { ...headers, origin: 'http://nav.example.com' } });
+  assert.equal(device.status, 200);
+  assert.match(device.headers.get('set-cookie'), /^agy_device=/);
+  assert.doesNotMatch(device.headers.get('set-cookie'), /; Secure\b/);
+  assert.equal((await send('/api/state', { headers: { host: '192.168.1.50:3000', origin: 'http://192.168.1.50:3000' } })).status, 200);
+});
+
+test('trusted proxy accepts same-origin HTTPS state requests and secures the device cookie', async t => {
+  const send = appRequest(t, { allowedHosts: ['nav.example.com', '192.168.1.50'], trustProxy: true });
+  const headers = { host: 'nav.example.com:8443', origin: 'https://nav.example.com:8443', 'x-forwarded-proto': ' HTTPS , http' };
+  const before = await send('/api/state', { headers });
+  assert.equal(before.status, 200);
+  assert.equal(before.body.revision, 0);
+  const saved = await send('/api/state', { method: 'PATCH', headers: {
+    ...headers, 'content-type': 'application/json', 'if-match': before.headers.get('etag'),
+  }, body: initial });
+  assert.equal(saved.status, 200);
+  assert.deepEqual((await send('/api/state', { headers })).body.state, initial);
+  const device = await send('/api/device/settings', { headers });
+  assert.equal(device.status, 200);
+  assert.match(device.headers.get('set-cookie'), /^agy_device=[a-f0-9]{64};.*; Secure$/);
+
+  for (const override of [
+    { origin: 'https://evil.example' },
+    { origin: 'https://nav.example.com' },
+    { host: 'unknown.example:8443', origin: 'https://unknown.example:8443', 'x-forwarded-host': headers.host },
+    { 'sec-fetch-site': 'cross-site' },
+    { 'x-forwarded-proto': 'http, https' },
+  ]) {
+    assert.equal((await send('/api/state', { headers: { ...headers, ...override } })).status, 403);
+  }
+  assert.equal((await send('/api/state', { headers: { host: 'nav.example.com:443',
+    origin: 'https://nav.example.com', 'x-forwarded-proto': 'https' } })).status, 200);
+});
 
 async function start(databasePath = ':memory:', root = resolveFrontendRoot) {
   const server = createApp({ root, databasePath });

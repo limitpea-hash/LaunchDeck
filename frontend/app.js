@@ -58,6 +58,7 @@ import {
   createTimePicker,
   createChoiceGroup,
   closeAllPopovers,
+  hasOpenPopovers,
 } from './lib/ui/index.js';
 import { createWidgetHost, WIDGET_MODULE_MAP } from './widgets/registry.js';
 import { createDesktopPointerDragController } from './lib/desktop-pointer-drag.js';
@@ -1768,6 +1769,7 @@ function isAnyModalOrDetailOpen() {
 }
 
 function closeWidgetDetailModal({ restoreFocus = true, recalibrateAfterClose = true } = {}) {
+  closeAllPopovers();
   const modal = document.getElementById('widgetDetailModal');
   if (!activeWidgetDetailRestore && (!modal || modal.hidden)) {
     state.activeWidgetDetailId = null;
@@ -5358,6 +5360,10 @@ function initSpotlightAndEngines() {
         closeMovePagePopover();
         return;
       }
+      if (hasOpenPopovers()) {
+        closeAllPopovers(null, { restoreFocus: true });
+        return;
+      }
       const widgetDetailModal = document.getElementById('widgetDetailModal');
       const categoryOverflowModal = document.getElementById('categoryOverflowModal');
       const folderDetailModal = document.getElementById('folderDetailModal');
@@ -6521,7 +6527,7 @@ const ADD_WIDGET_DESCRIPTIONS = Object.freeze({
   habits: '每日习惯打卡与七天进度',
   'today-dashboard': '天气、待办与最近倒数一览',
   'weather-strip': '未来六小时天气横条',
-  'currency-converter': '常用币种参考汇率换算',
+  'currency-converter': '按国家/地区检索全球汇率，支持热门货币快选',
 });
 
 function renderAddWidgetModalList() {

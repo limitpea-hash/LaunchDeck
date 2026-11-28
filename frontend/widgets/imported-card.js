@@ -3,6 +3,7 @@ import { createWeatherGlyph, resolveWeatherVisualKind } from './summary-helpers.
 import {
   isSupportedCurrency,
   currencyName,
+  currencyCountry,
   peekExchangeRate,
   getExchangeRate,
   subscribeExchangeRates,
@@ -348,8 +349,9 @@ function renderCurrency(cfg, ui, context, root) {
     setText(inverse, view ? `1 ${quote} = ${formatRate(1 / view.rate)} ${base}` : '');
     setText(meta, status.short);
     setText(dRate, view ? `${rateText} ${quote}` : rateText);
-    setText(dCap, `1 ${currencyName(base)}（${base}）兑${currencyName(quote)}（${quote}） · ${status.long}`);
+    setText(dCap, `1 ${currencyCountry(base)} · ${currencyName(base)}（${base}）兑 ${currencyCountry(quote)} · ${currencyName(quote)}（${quote}） · ${status.long}`);
     fillFacts(ui.facts, view ? [
+      ['国家/地区', `${currencyCountry(base)} → ${currencyCountry(quote)}`],
       ['汇率', `1 ${base} = ${formatRate(view.rate)} ${quote}`],
       ['反向', `1 ${quote} = ${formatRate(1 / view.rate)} ${base}`],
       ['参考日期', view.source === 'identity' ? '' : view.date || '未知'],

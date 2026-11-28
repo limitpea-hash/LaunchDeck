@@ -7,6 +7,9 @@ import { tmpdir } from 'node:os';
 import { createApp } from './app.js';
 import { resolveFrontendRoot } from './paths.js';
 import { createEnvironmentService } from './features/environment.js';
+import {
+  CURRENCIES, CURRENCY_CATALOG, CURRENCY_REGIONS, POPULAR_CURRENCIES, getCurrencyMeta, validateCurrencyPair,
+} from './features/currencies.js';
 import { createExchangeRateService } from './features/exchange-rates.js';
 import { readWidgetPackage } from './features/widget-package.js';
 import { getChinaHoliday, hasChinaHolidaySchedule } from './features/china-holidays.js';
@@ -225,6 +228,135 @@ test('mainland China schedules show official breaks and makeup workdays across m
   assert.deepEqual(getChinaHoliday('2027-01-31'), { kind: 'workday', name: '春节' });
   assert.equal(getChinaHoliday('2027-02-01'), null);
   assert.equal(hasChinaHolidaySchedule(2028), false);
+});
+
+test('currency catalog contains 158 frozen entries in the agreed order', () => {
+  const legacy = {
+    CNY: '人民币', USD: '美元', EUR: '欧元', JPY: '日元', HKD: '港元', GBP: '英镑',
+    AUD: '澳元', CAD: '加拿大元', SGD: '新加坡元', KRW: '韩元', CHF: '瑞士法郎', TWD: '新台币',
+  };
+  assert.deepEqual(POPULAR_CURRENCIES, [
+    ...Object.keys(legacy), 'MOP', 'THB', 'MYR', 'VND', 'NZD', 'AED',
+  ]);
+  assert.deepEqual(CURRENCY_REGIONS, [
+    { id: 'asia', label: '亚洲' }, { id: 'europe', label: '欧洲' }, { id: 'americas', label: '美洲' },
+    { id: 'oceania', label: '大洋洲' }, { id: 'middle-east', label: '中东' }, { id: 'africa', label: '非洲' },
+  ]);
+  const otherCodes = `
+    AFN ALL AMD ANG AOA ARS AWG AZN BAM BBD BDT BHD BIF BMD BND BOB BRL BSD BTN BWP BYN BZD
+    CDF CLP COP CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB FJD FKP GEL GGP GHS GIP GMD GNF GTQ GYD
+    HNL HTG HUF IDR ILS IMP INR IQD IRR ISK JEP JMD JOD KES KGS KHR KMF KPW KWD KYD KZT LAK LBP LKR
+    LRD LSL LYD MAD MDL MGA MKD MMK MNT MRU MUR MVR MWK MXN MZN NAD NGN NIO NOK NPR OMR PAB PEN PGK
+    PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SDG SEK SHP SLE SOS SRD SSP STN SVC SYP SZL TJS
+    TMT TND TOP TRY TTD TZS UAH UGX UYU UZS VES VUV WST XAF XCD XCG XOF XPF YER ZAR ZMW ZWG
+  `.trim().split(/\s+/);
+  const codes = CURRENCY_CATALOG.map(item => item.code);
+  assert.equal(codes.length, 158);
+  assert.equal(new Set(codes).size, 158);
+  assert.deepEqual(codes, [...POPULAR_CURRENCIES, ...otherCodes]);
+  assert.deepEqual(Object.keys(CURRENCIES), codes);
+  assert.deepEqual(Object.entries(CURRENCIES).slice(0, 12), Object.entries(legacy));
+  for (const value of [CURRENCY_CATALOG, CURRENCIES, POPULAR_CURRENCIES, CURRENCY_REGIONS, ...CURRENCY_REGIONS]) {
+    assert.ok(Object.isFrozen(value));
+  }
+  const regionIds = new Set(CURRENCY_REGIONS.map(region => region.id));
+  for (const item of CURRENCY_CATALOG) {
+    assert.ok(Object.isFrozen(item), item.code);
+    assert.match(item.code, /^[A-Z]{3}$/);
+    for (const field of ['name', 'symbol', 'country']) {
+      assert.equal(typeof item[field], 'string', `${item.code}.${field}`);
+      assert.ok(item[field].trim(), `${item.code}.${field}`);
+    }
+    for (const field of ['countries', 'aliases']) {
+      assert.ok(Array.isArray(item[field]) && Object.isFrozen(item[field]), `${item.code}.${field}`);
+      assert.ok(item[field].length > 0, `${item.code}.${field}`);
+      assert.ok(item[field].every(value => typeof value === 'string' && value.trim()), `${item.code}.${field}`);
+    }
+    assert.ok(item.countries.includes(item.country), item.code);
+    assert.ok(regionIds.has(item.region), item.code);
+    assert.equal(item.popular, POPULAR_CURRENCIES.includes(item.code), item.code);
+    assert.equal(CURRENCIES[item.code], item.name);
+    assert.equal(getCurrencyMeta(item.code), item);
+  }
+  for (const invalid of ['ZZZ', 'eur', ' EUR ', 'constructor', '__proto__', null, undefined, 1, ['EUR']]) {
+    assert.equal(getCurrencyMeta(invalid), null);
+  }
+});
+
+test('currency catalog maps shared currencies and country search aliases', () => {
+  const countriesByCode = {
+    EUR: [
+      '欧元区', '法国', '德国', '意大利', '西班牙', '荷兰', '比利时', '奥地利', '葡萄牙', '希腊', '爱尔兰', '芬兰',
+      '卢森堡', '斯洛伐克', '斯洛文尼亚', '爱沙尼亚', '拉脱维亚', '立陶宛', '克罗地亚', '保加利亚', '塞浦路斯',
+      '马耳他', '摩纳哥', '圣马力诺', '梵蒂冈', '安道尔', '黑山', '科索沃',
+    ],
+    USD: ['美国', '波多黎各', '关岛', '厄瓜多尔', '萨尔瓦多', '巴拿马', '东帝汶', '帕劳', '密克罗尼西亚', '马绍尔群岛'],
+    GBP: ['英国', '英格兰', '苏格兰', '威尔士', '北爱尔兰'],
+    AUD: ['澳大利亚', '基里巴斯', '瑙鲁', '图瓦卢'],
+    NZD: ['新西兰', '库克群岛', '纽埃'],
+    CHF: ['瑞士', '列支敦士登'],
+    DKK: ['丹麦', '格陵兰', '法罗群岛'],
+    ZAR: ['南非', '纳米比亚', '莱索托', '斯威士兰'],
+    XOF: ['塞内加尔', '科特迪瓦', '马里', '布基纳法索', '贝宁', '多哥', '尼日尔', '几内亚比绍'],
+    XAF: ['喀麦隆', '加蓬', '刚果共和国', '赤道几内亚', '乍得', '中非共和国'],
+    XCD: ['安提瓜和巴布达', '多米尼克', '格林纳达', '圣基茨和尼维斯', '圣卢西亚', '圣文森特和格林纳丁斯', '安圭拉', '蒙特塞拉特'],
+    XPF: ['法属波利尼西亚', '大溪地', '新喀里多尼亚', '瓦利斯和富图纳'],
+    XCG: ['库拉索', '荷属圣马丁'],
+    ANG: ['荷属安的列斯', '库拉索', '荷属圣马丁'],
+  };
+  for (const [code, countries] of Object.entries(countriesByCode)) {
+    for (const country of countries) assert.ok(getCurrencyMeta(code).countries.includes(country), `${code} / ${country}`);
+  }
+  for (const country of ['法国', '德国']) {
+    assert.equal(CURRENCY_CATALOG.find(item => item.countries.includes(country))?.code, 'EUR');
+  }
+  const aliasesByCode = {
+    CNY: ['china', 'chinese renminbi yuan', 'zhongguo', 'rmb', '大陆'],
+    USD: ['美金'], EUR: ['france', 'faguo', 'germany', 'deguo', '欧罗'], JPY: ['japan', 'riben'],
+    HKD: ['港币'], GBP: ['英磅'], TWD: ['台币'], THB: ['thailand', 'taiguo'], MYR: ['大马'], AED: ['迪拜'], IDR: ['印尼'],
+  };
+  for (const [code, aliases] of Object.entries(aliasesByCode)) {
+    const searchTerms = getCurrencyMeta(code).aliases.map(alias => alias.toLowerCase());
+    for (const alias of aliases) assert.ok(searchTerms.includes(alias), `${code} / ${alias}`);
+  }
+});
+
+test('currency pair validation accepts listed codes and rejects unsupported codes', () => {
+  for (const [base, quote] of [['THB', 'MYR'], ['VND', 'AED'], ['BRL', 'ZAR'], ['ANG', 'XCG'], ['CNY', 'CNY']]) {
+    assert.deepEqual(validateCurrencyPair({ base, quote }), { base, quote });
+  }
+  const invalidPair = { status: 400 };
+  for (const invalid of ['BTC', 'XAU', 'XDR', 'CMD', 'CNH', 'ZZZ', 'constructor', 'usd', 'USD ', 100, null]) {
+    assert.throws(() => validateCurrencyPair({ base: invalid, quote: 'USD' }), invalidPair);
+    assert.throws(() => validateCurrencyPair({ base: 'USD', quote: invalid }), invalidPair);
+  }
+  assert.throws(() => validateCurrencyPair({ base: 'USD' }), invalidPair);
+  assert.throws(() => validateCurrencyPair({ base: 'USD', quote: 'JPY', amount: 1 }), invalidPair);
+});
+
+test('exchange rate cache keeps 128 currency pairs and evicts the oldest entry', async () => {
+  let now = NOW;
+  let calls = 0;
+  const service = createExchangeRateService({
+    now: () => now,
+    async fetchImpl(url) {
+      calls++;
+      const [, , , base, quote] = url.pathname.split('/');
+      return Response.json({ base, quote, rate: 1, date: '2026-11-03' });
+    },
+  });
+  const quotes = CURRENCY_CATALOG.map(item => item.code).filter(code => code !== 'USD');
+  const rate = quote => service.rate({ base: 'USD', quote });
+  for (const [index, quote] of quotes.slice(0, 128).entries()) {
+    if (index > 0 && index % 30 === 0) now += 60000;
+    assert.equal((await rate(quote)).cache.hit, false);
+  }
+  assert.equal((await rate(quotes[0])).cache.hit, true);
+  assert.equal(calls, 128);
+  assert.equal((await rate(quotes[128])).cache.hit, false);
+  assert.equal((await rate(quotes[1])).cache.hit, true);
+  assert.equal((await rate(quotes[0])).cache.hit, false);
+  assert.equal(calls, 130);
 });
 
 test('reference exchange rates validate pairs, deduplicate requests, and mark stale data', async t => {

@@ -50,11 +50,11 @@ export function createFeatureRoutes({ db, readBody, json, environment, exchangeR
     json(res, 200, value, { ETag: `"${value.revision}"` });
   }
 
-  function settings(req, res) {
-    return store.read(deviceKey(req, res), defaultDeviceSettings).state;
+  function settings(req, res, forwardedHttps) {
+    return store.read(deviceKey(req, res, forwardedHttps), defaultDeviceSettings).state;
   }
 
-  return async function handle(req, res, url) {
+  return async function handle(req, res, url, forwardedHttps) {
     const path = url.pathname;
     const allowed = methods.get(path);
     if (!allowed) return false;
@@ -79,7 +79,7 @@ export function createFeatureRoutes({ db, readBody, json, environment, exchangeR
       documentResponse(res, value);
     } else if (path === '/api/device/settings') {
       validateQuery(url, []);
-      const key = deviceKey(req, res);
+      const key = deviceKey(req, res, forwardedHttps);
       const value = req.method === 'GET' ? store.read(key, defaultDeviceSettings)
         : store.patch(key, defaultDeviceSettings, await readBody(req, 16 * 1024), req.headers['if-match'], validateSettingsPatch);
       documentResponse(res, value);
@@ -90,7 +90,7 @@ export function createFeatureRoutes({ db, readBody, json, environment, exchangeR
       validateQuery(url, ['browserTimeZone']);
       const browserTimeZone = url.searchParams.get('browserTimeZone') ?? undefined;
       if (browserTimeZone !== undefined) timeZone(browserTimeZone);
-      const value = settings(req, res);
+      const value = settings(req, res, forwardedHttps);
       json(res, 200, clockSnapshot(value.clock, { browserTimeZone,
         locationTimeZone: value.location.mode === 'manual' ? value.location.manual.timeZone : undefined,
         now: environment.now() }));
@@ -100,7 +100,7 @@ export function createFeatureRoutes({ db, readBody, json, environment, exchangeR
     } else if (path === '/api/environment/resolve') {
       validateQuery(url, []);
       const input = validateEnvironmentInput(await readBody(req, 4096));
-      json(res, 200, await environment.resolveEnvironment(settings(req, res), input, req.socket.remoteAddress));
+      json(res, 200, await environment.resolveEnvironment(settings(req, res, forwardedHttps), input, req.socket.remoteAddress));
     } else if (path === '/api/weather') {
       validateQuery(url, ['latitude', 'longitude', 'timeZone', 'temperatureUnit']);
       json(res, 200, await environment.weather({ latitude: numberParam(url, 'latitude'), longitude: numberParam(url, 'longitude'),

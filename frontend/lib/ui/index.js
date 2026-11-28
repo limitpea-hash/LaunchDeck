@@ -8,10 +8,24 @@ function nextUid(prefix = 'ui') {
   return `${prefix}_${uidCounter}`;
 }
 
-export function closeAllPopovers(exceptInstance = null) {
+export function registerPopover(instance) {
+  if (instance && typeof instance.close === 'function') {
+    activePopovers.add(instance);
+  }
+}
+
+export function unregisterPopover(instance) {
+  activePopovers.delete(instance);
+}
+
+export function hasOpenPopovers() {
+  return activePopovers.size > 0;
+}
+
+export function closeAllPopovers(exceptInstance = null, { restoreFocus = false } = {}) {
   for (const inst of [...activePopovers]) {
     if (inst !== exceptInstance) {
-      inst.close({ restoreFocus: false });
+      inst.close({ restoreFocus });
     }
   }
 }

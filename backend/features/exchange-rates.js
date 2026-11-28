@@ -73,7 +73,7 @@ export function createExchangeRateService({ fetchImpl = globalThis.fetch, now = 
         const value = { ...await readRate(upstream, pair), fetchedAt: entryTime() };
         cached.delete(key);
         cached.set(key, value);
-        while (cached.size > 64) cached.delete(cached.keys().next().value);
+        while (cached.size > 128) cached.delete(cached.keys().next().value);
         return response(value);
       } catch (error) {
         if (error.status === 403) throw error;

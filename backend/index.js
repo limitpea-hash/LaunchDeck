@@ -1,7 +1,14 @@
 import { resolve } from 'node:path';
 import { createApp } from './app.js';
 import { backendRoot, projectRoot, resolveFrontendRoot } from './paths.js';
-import { getLocalIPv4Addresses } from './network.js';
+import { getLocalIPv4Addresses, parseAllowedHosts } from './network.js';
+
+parseAllowedHosts(process.env.ALLOWED_HOSTS);
+const rawTrustProxy = process.env.TRUST_PROXY ?? '';
+if (!['', 'false', 'true'].includes(rawTrustProxy)) {
+  throw new Error('TRUST_PROXY 只能设为 true、false 或留空');
+}
+const trustProxy = rawTrustProxy === 'true';
 
 const port = Number(process.env.PORT || 3000);
 const listenHost = process.env.LISTEN_HOST || '0.0.0.0';
@@ -11,6 +18,7 @@ const server = createApp({
   databasePath: process.env.DATABASE_PATH
     ? resolve(projectRoot, process.env.DATABASE_PATH)
     : resolve(backendRoot, 'data/portal.sqlite'),
+  trustProxy,
 });
 server.on('error', error => {
   console.error(error.code === 'EADDRINUSE' ? `端口 ${port} 已被占用，请设置其他 PORT。` : error.message);

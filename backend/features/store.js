@@ -42,12 +42,13 @@ export function createFeatureStore(db) {
   };
 }
 
-export function deviceKey(req, res) {
+export function deviceKey(req, res, forwardedHttps = false) {
   const cookie = (req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith('agy_device='));
   let token = cookie?.slice('agy_device='.length);
   if (!/^[a-f0-9]{64}$/.test(token || '')) {
     token = randomBytes(32).toString('hex');
-    res.setHeader('Set-Cookie', `agy_device=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=31536000${req.socket.encrypted ? '; Secure' : ''}`);
+    const secure = req.socket.encrypted || forwardedHttps;
+    res.setHeader('Set-Cookie', `agy_device=${token}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=31536000${secure ? '; Secure' : ''}`);
   }
   return `device:${createHash('sha256').update(token).digest('hex')}`;
 }

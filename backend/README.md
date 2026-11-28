@@ -10,11 +10,15 @@
 - 更换端口：`PORT=3001 npm start`。
 - 启动日志会列出本机和局域网访问地址。其他设备应使用 `http://<Mac 的局域网 IP>:3000/`，而不是 `0.0.0.0` 或 `localhost`。
 - 需要恢复仅本机监听时，使用 `LISTEN_HOST=127.0.0.1 npm start`。默认监听地址为 `0.0.0.0`。
+- `ALLOWED_HOSTS` 可追加浏览器访问时使用的域名、IPv4 或带方括号的 IPv6。用逗号或空白分隔，例如 `192.168.1.50,nav.example.com,[fd00::1]`。每项只填写主机部分。
+- `TRUST_PROXY` 留空或设为 `false` 时适用于直连。通过可信反向代理提供 HTTPS 时设为 `true`，并让代理保留原始 `Host`、覆盖 `X-Forwarded-Proto`。后端使用该头进行同源校验，并在 HTTPS 响应中为设备 Cookie 设置 `Secure`。
 - 自定义数据库：`DATABASE_PATH=/绝对路径/portal.sqlite npm start`。相对路径统一相对项目根目录解析，从根目录或 `backend/` 启动行为一致。
 - 前端目录：优先读取 `frontend/index.html` 及同目录资源；Antigravity 完成迁移前，临时读取根目录的前端文件。每次静态请求重新选择目录，迁移完成后无需重启后端。
 - 指定其他前端目录：`FRONTEND_DIR=frontend npm start`，相对路径相对项目根目录解析。
 - 备份时先停止服务，再复制整个 `backend/data` 文件夹。
 - Node.js 24 的内置 SQLite 可能输出实验性功能提示，不影响启动。
+
+使用 Docker Compose 时，在项目根目录将 `.env.example` 复制为 `.env`，按需设置 `LAUNCHDECK_PORT`。通过宿主机局域网 IP 或反代域名访问时，把该地址加入 `ALLOWED_HOSTS`。执行 `docker compose up -d --build` 启动，默认访问 `http://127.0.0.1:3000`，SQLite 数据保存在 Compose 命名卷 `launchdeck_data` 中。
 
 ## 小组件、时钟天气与 DIY
 
@@ -41,7 +45,7 @@
 
 ## 接口
 
-所有接口使用同源请求，不开放跨域。允许通过 localhost、回环地址和本机实际 IPv4 地址访问，局域网地址随系统网络配置动态更新；来源检查继续生效。静态服务只提供已列入白名单的页面资源，数据库和服务端代码不对外提供。
+所有接口使用同源请求，不开放跨域。Host 白名单包含 localhost、回环地址、`0.0.0.0`、服务所在主机的实际 IPv4 地址，以及 `ALLOWED_HOSTS` 中配置的主机。静态服务只提供已列入白名单的页面资源，数据库和服务端代码不对外提供。
 
 ### GET /api/health
 

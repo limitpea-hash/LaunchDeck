@@ -34,7 +34,7 @@ const assets = new Map([
 
 export function createApp({
   root, databasePath, allowedHosts = getAllowedHosts, environmentService = createEnvironmentService(),
-  exchangeRateService = createExchangeRateService(),
+  exchangeRateService = createExchangeRateService(), trustProxy = process.env.TRUST_PROXY === 'true',
 }) {
   if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(databasePath);
@@ -87,9 +87,11 @@ export function createApp({
     res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(), microphone=()');
     res.setHeader('X-Frame-Options', 'DENY');
     try {
+      const forwardedHttps = trustProxy === true &&
+        req.headers['x-forwarded-proto']?.split(',', 1)[0].trim().toLowerCase() === 'https';
       let base;
       try {
-        base = new URL(`http://${req.headers.host}`);
+        base = new URL(`${forwardedHttps ? 'https' : 'http'}://${req.headers.host}`);
         if (!req.headers.host || base.username || base.password || base.pathname !== '/' || base.search || base.hash) throw new Error('invalid Host');
       } catch { throw new HttpError(400, '访问地址格式不正确'); }
       const hosts = typeof allowedHosts === 'function' ? allowedHosts() : allowedHosts;
@@ -131,7 +133,7 @@ export function createApp({
         return json(res, 200, value, { ETag: `"${value.revision}"` });
       }
       if (await handleNavigation(req, res, url)) return;
-      if (await handleFeature(req, res, url)) return;
+      if (await handleFeature(req, res, url, forwardedHttps)) return;
       if (path.startsWith('/api/')) throw new HttpError(404, '接口不存在');
       if (!['GET', 'HEAD'].includes(req.method)) {
         res.setHeader('Allow', 'GET, HEAD');
